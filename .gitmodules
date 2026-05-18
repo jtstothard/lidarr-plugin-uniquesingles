@@ -1,0 +1,3 @@
+[submodule "Submodules/Lidarr"]
+	path = Submodules/Lidarr
+	url = https://github.com/Lidarr/Lidarr.git
