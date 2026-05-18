@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Lidarr.Plugin.UniqueSingles")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0f12c6e2579e3172da0736f61f5453c99461acb9")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+34520ceda319d65012ad0fff508085631d4ac3ce")]
 [assembly: System.Reflection.AssemblyProductAttribute("Lidarr.Plugin.UniqueSingles")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Lidarr.Plugin.UniqueSingles")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
