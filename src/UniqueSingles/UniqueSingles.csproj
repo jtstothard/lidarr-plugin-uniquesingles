@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <DebugType Condition="'$(Configuration)'=='Debug'">embedded</DebugType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Lidarr.Plugin.$(MSBuildProjectName)</AssemblyName>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- Disable StyleCop analyzers inherited from Lidarr submodule -->
+    <NoWarn>SA1200,SA0002,AD0001</NoWarn>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <AnalysisLevel>none</AnalysisLevel>
+    <RunAnalyzers>false</RunAnalyzers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Submodules\Lidarr\src\NzbDrone.Common\Lidarr.Common.csproj">
+      <ExcludeAssets>analyzers</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\..\Submodules\Lidarr\src\NzbDrone.Core\Lidarr.Core.csproj">
+      <ExcludeAssets>analyzers</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,488 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Lidarr.Core</name>
+    </assembly>
+    <members>
+        <member name="T:NzbDrone.Core.Datastore.ExpressionVisitor">
+            <summary>
+            Expression visitor
+            </summary>
+        </member>
+        <member name="M:NzbDrone.Core.Datastore.ExpressionVisitor.Visit(System.Linq.Expressions.Expression)">
+            <summary>
+            Visits expression and delegates call to different to branch.
+            </summary>
+            <param name="expression"></param>
+            <returns></returns>
+        </member>
+        <member name="M:NzbDrone.Core.Datastore.ExpressionVisitor.VisitConstant(System.Linq.Expressions.ConstantExpression)">
+            <summary>
+            Visits the constance expression. To be implemented by user.
+            </summary>
+            <param name="expression"></param>
+            <returns></returns>
+        </member>
+        <member name="M:NzbDrone.Core.Datastore.ExpressionVisitor.VisitMemberAccess(System.Linq.Expressions.MemberExpression)">
+            <summary>
+            Visits the member access expression. To be implemented by user.
+            </summary>
+            <param name="expression"></param>
+            <returns></returns>
+        </member>
+        <member name="M:NzbDrone.Core.Datastore.ExpressionVisitor.VisitMethodCall(System.Linq.Expressions.MethodCallExpression)">
+            <summary>
+            Visits the method call expression. To be implemented by user.
+            </summary>
+            <param name="expression"></param>
+            <returns></returns>
+        </member>
+        <member name="M:NzbDrone.Core.Datastore.ExpressionVisitor.VisitBinary(System.Linq.Expressions.BinaryExpression)">
+            <summary>
+            Visits the binary expression.
+            </summary>
+            <param name="expression"></param>
+            <returns></returns>
+        </member>
+        <member name="M:NzbDrone.Core.Datastore.ExpressionVisitor.VisitUnary(System.Linq.Expressions.UnaryExpression)">
+            <summary>
+            Visits the unary expression.
+            </summary>
+            <param name="expression"></param>
+            <returns></returns>
+        </member>
+        <member name="M:NzbDrone.Core.Datastore.ExpressionVisitor.VisitLamda(System.Linq.Expressions.LambdaExpression)">
+            <summary>
+            Visits the lamda expression.
+            </summary>
+            <param name="lambdaExpression"></param>
+            <returns></returns>
+        </member>
+        <member name="T:NzbDrone.Core.Datastore.LazyLoaded`1">
+            <summary>
+            Allows a field to be lazy loaded.
+            </summary>
+            <typeparam name="TChild"></typeparam>
+        </member>
+        <member name="T:NzbDrone.Core.Datastore.LazyLoaded`2">
+            <summary>
+            This is the lazy loading proxy.
+            </summary>
+            <typeparam name="TParent">The parent entity that contains the lazy loaded entity.</typeparam>
+            <typeparam name="TChild">The child entity that is being lazy loaded.</typeparam>
+        </member>
+        <member name="M:NzbDrone.Core.Datastore.Migration.Framework.SqliteSchemaDumper.GetDbType(System.String)">
+            <summary>
+            Get DbType from string type definition
+            </summary>
+            <param name="typeNum"></param>
+            <returns></returns>
+        </member>
+        <member name="P:NzbDrone.Core.Download.Clients.DownloadStation.DownloadStation2Task.Type">
+            <summary>
+            /// Possible values are: BT, NZB, http, ftp, eMule and https
+            </summary>
+        </member>
+        <member name="P:NzbDrone.Core.Download.Clients.DownloadStation.DownloadStationTask.Type">
+            <summary>
+            /// Possible values are: BT, NZB, http, ftp, eMule and https
+            </summary>
+        </member>
+        <member name="T:NzbDrone.Core.Download.Clients.Sabnzbd.JsonConverters.SabnzbdStringArrayConverter">
+            <summary>
+            On some properties sab serializes array of single item as plain string.
+            </summary>
+        </member>
+        <member name="M:NzbDrone.Core.Indexers.TorrentRss.TorrentRssSettingsDetector.Detect(NzbDrone.Core.Indexers.TorrentRss.TorrentRssIndexerSettings)">
+            <summary>
+            Detect settings for Parser, based on URL
+            </summary>
+            <param name="settings">Indexer Settings to use for Parser</param>
+            <returns>Parsed Settings or <c>null</c></returns>
+        </member>
+        <member name="M:NzbDrone.Core.Plugins.PluginService.GitHubUrlRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>^https?://github\\.com/(?&lt;owner&gt;[^/]+)/(?&lt;n&gt;[^/\\s]+)(?:/tree/(?&lt;tree&gt;[^/\\s]+))?(?:\\.git)?/?$</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase | RegexOptions.Compiled</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match if at the beginning of the string.<br/>
+            ○ Match a character in the set [Hh].<br/>
+            ○ Match a character in the set [Tt] exactly 2 times.<br/>
+            ○ Match a character in the set [Pp].<br/>
+            ○ Match a character in the set [Ss] atomically, optionally.<br/>
+            ○ Match the string "://".<br/>
+            ○ Match a character in the set [Gg].<br/>
+            ○ Match a character in the set [Ii].<br/>
+            ○ Match a character in the set [Tt].<br/>
+            ○ Match a character in the set [Hh].<br/>
+            ○ Match a character in the set [Uu].<br/>
+            ○ Match a character in the set [Bb].<br/>
+            ○ Match '.'.<br/>
+            ○ Match a character in the set [Cc].<br/>
+            ○ Match a character in the set [Oo].<br/>
+            ○ Match a character in the set [Mm].<br/>
+            ○ Match '/'.<br/>
+            ○ "owner" capture group.<br/>
+                ○ Match a character other than '/' atomically at least once.<br/>
+            ○ Match '/'.<br/>
+            ○ "n" capture group.<br/>
+                ○ Match a character in the set [^/\s] greedily at least once.<br/>
+            ○ Optional (greedy).<br/>
+                ○ Match '/'.<br/>
+                ○ Match a character in the set [Tt].<br/>
+                ○ Match a character in the set [Rr].<br/>
+                ○ Match a character in the set [Ee] exactly 2 times.<br/>
+                ○ Match '/'.<br/>
+                ○ "tree" capture group.<br/>
+                    ○ Match a character in the set [^/\s] greedily at least once.<br/>
+            ○ Optional (greedy).<br/>
+                ○ Match '.'.<br/>
+                ○ Match a character in the set [Gg].<br/>
+                ○ Match a character in the set [Ii].<br/>
+                ○ Match a character in the set [Tt].<br/>
+            ○ Match '/' atomically, optionally.<br/>
+            ○ Match if at the end of the string or if before an ending newline.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:NzbDrone.Core.Plugins.PluginService.TagSplitterRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>([@#])</code><br/>
+            Options:<br/>
+            <code>RegexOptions.Compiled</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ 1st capture group.<br/>
+                ○ Match a character in the set [#@].<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:NzbDrone.Core.Plugins.PluginService.RepoUrlExtractorRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>github\\.com/(?&lt;owner&gt;[^/]+)/(?&lt;n&gt;[^/]+)/</code><br/>
+            Options:<br/>
+            <code>RegexOptions.Compiled</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match the string "github.com/".<br/>
+            ○ "owner" capture group.<br/>
+                ○ Match a character other than '/' atomically at least once.<br/>
+            ○ Match '/'.<br/>
+            ○ "n" capture group.<br/>
+                ○ Match a character other than '/' atomically at least once.<br/>
+            ○ Match '/'.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:NzbDrone.Core.Plugins.PluginService.MinimumVersionRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>Minimum\\s+Lidarr\\s+Version:?\\s*(?:\\*\\*)?[\\s]*(?&lt;version&gt;\\d+\\.\\d+\\.\\d+\\.\\d+)</code><br/>
+            Options:<br/>
+            <code>RegexOptions.IgnoreCase | RegexOptions.Compiled</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match a character in the set [Mm].<br/>
+            ○ Match a character in the set [Ii].<br/>
+            ○ Match a character in the set [Nn].<br/>
+            ○ Match a character in the set [Ii].<br/>
+            ○ Match a character in the set [Mm].<br/>
+            ○ Match a character in the set [Uu].<br/>
+            ○ Match a character in the set [Mm].<br/>
+            ○ Match a whitespace character atomically at least once.<br/>
+            ○ Match a character in the set [Ll].<br/>
+            ○ Match a character in the set [Ii].<br/>
+            ○ Match a character in the set [Dd].<br/>
+            ○ Match a character in the set [Aa].<br/>
+            ○ Match a character in the set [Rr] exactly 2 times.<br/>
+            ○ Match a whitespace character atomically at least once.<br/>
+            ○ Match a character in the set [Vv].<br/>
+            ○ Match a character in the set [Ee].<br/>
+            ○ Match a character in the set [Rr].<br/>
+            ○ Match a character in the set [Ss].<br/>
+            ○ Match a character in the set [Ii].<br/>
+            ○ Match a character in the set [Oo].<br/>
+            ○ Match a character in the set [Nn].<br/>
+            ○ Match ':' greedily, optionally.<br/>
+            ○ Match a whitespace character greedily any number of times.<br/>
+            ○ Optional (greedy).<br/>
+                ○ Match the string "**".<br/>
+            ○ Match a whitespace character atomically any number of times.<br/>
+            ○ "version" capture group.<br/>
+                ○ Match a Unicode digit atomically at least once.<br/>
+                ○ Match '.'.<br/>
+                ○ Match a Unicode digit atomically at least once.<br/>
+                ○ Match '.'.<br/>
+                ○ Match a Unicode digit atomically at least once.<br/>
+                ○ Match '.'.<br/>
+                ○ Match a Unicode digit atomically at least once.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:NzbDrone.Core.Plugins.PluginService.VersionWithPrereleaseRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>^(?&lt;version&gt;\\d+\\.\\d+\\.\\d+(?:\\.\\d+)?)(?:-(?&lt;prerelease&gt;.+))?$</code><br/>
+            Options:<br/>
+            <code>RegexOptions.Compiled</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match if at the beginning of the string.<br/>
+            ○ "version" capture group.<br/>
+                ○ Match a Unicode digit atomically at least once.<br/>
+                ○ Match '.'.<br/>
+                ○ Match a Unicode digit atomically at least once.<br/>
+                ○ Match '.'.<br/>
+                ○ Match a Unicode digit greedily at least once.<br/>
+                ○ Optional (greedy).<br/>
+                    ○ Match '.'.<br/>
+                    ○ Match a Unicode digit greedily at least once.<br/>
+            ○ Optional (greedy).<br/>
+                ○ Match '-'.<br/>
+                ○ "prerelease" capture group.<br/>
+                    ○ Match a character other than '\n' greedily at least once.<br/>
+            ○ Match if at the end of the string or if before an ending newline.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="M:NzbDrone.Core.Plugins.PluginService.VersionOnlyRegex">
+            <remarks>
+            Pattern:<br/>
+            <code>^(\\d+\\.\\d+\\.\\d+(?:\\.\\d+)?)</code><br/>
+            Options:<br/>
+            <code>RegexOptions.Compiled</code><br/>
+            Explanation:<br/>
+            <code>
+            ○ Match if at the beginning of the string.<br/>
+            ○ 1st capture group.<br/>
+                ○ Match a Unicode digit atomically at least once.<br/>
+                ○ Match '.'.<br/>
+                ○ Match a Unicode digit atomically at least once.<br/>
+                ○ Match '.'.<br/>
+                ○ Match a Unicode digit greedily at least once.<br/>
+                ○ Optional (greedy).<br/>
+                    ○ Match '.'.<br/>
+                    ○ Match a Unicode digit atomically at least once.<br/>
+            </code>
+            </remarks>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.GitHubUrlRegex_0">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the GitHubUrlRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.GitHubUrlRegex_0.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.GitHubUrlRegex_0.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.GitHubUrlRegex_0.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.GitHubUrlRegex_0.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.GitHubUrlRegex_0.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.GitHubUrlRegex_0.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.GitHubUrlRegex_0.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.GitHubUrlRegex_0.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.TagSplitterRegex_1">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the TagSplitterRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.TagSplitterRegex_1.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.TagSplitterRegex_1.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.TagSplitterRegex_1.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.TagSplitterRegex_1.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.TagSplitterRegex_1.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.TagSplitterRegex_1.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.TagSplitterRegex_1.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.TagSplitterRegex_1.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.RepoUrlExtractorRegex_2">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the RepoUrlExtractorRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.RepoUrlExtractorRegex_2.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepoUrlExtractorRegex_2.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.RepoUrlExtractorRegex_2.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepoUrlExtractorRegex_2.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.RepoUrlExtractorRegex_2.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepoUrlExtractorRegex_2.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepoUrlExtractorRegex_2.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.RepoUrlExtractorRegex_2.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.MinimumVersionRegex_3">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the MinimumVersionRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.MinimumVersionRegex_3.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.MinimumVersionRegex_3.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.MinimumVersionRegex_3.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.MinimumVersionRegex_3.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.MinimumVersionRegex_3.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.MinimumVersionRegex_3.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.MinimumVersionRegex_3.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.MinimumVersionRegex_3.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.VersionWithPrereleaseRegex_4">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the VersionWithPrereleaseRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.VersionWithPrereleaseRegex_4.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.VersionWithPrereleaseRegex_4.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.VersionWithPrereleaseRegex_4.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.VersionWithPrereleaseRegex_4.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.VersionWithPrereleaseRegex_4.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.VersionWithPrereleaseRegex_4.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.VersionWithPrereleaseRegex_4.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.VersionWithPrereleaseRegex_4.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.VersionOnlyRegex_5">
+            <summary>Custom <see cref="T:System.Text.RegularExpressions.Regex"/>-derived type for the VersionOnlyRegex method.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.VersionOnlyRegex_5.Instance">
+            <summary>Cached, thread-safe singleton instance.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.VersionOnlyRegex_5.#ctor">
+            <summary>Initializes the instance.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.VersionOnlyRegex_5.RunnerFactory">
+            <summary>Provides a factory for creating <see cref="T:System.Text.RegularExpressions.RegexRunner"/> instances to be used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.VersionOnlyRegex_5.RunnerFactory.CreateInstance">
+            <summary>Creates an instance of a <see cref="T:System.Text.RegularExpressions.RegexRunner"/> used by methods on <see cref="T:System.Text.RegularExpressions.Regex"/>.</summary>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.VersionOnlyRegex_5.RunnerFactory.Runner">
+            <summary>Provides the runner that contains the custom logic implementing the specified regular expression.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.VersionOnlyRegex_5.RunnerFactory.Runner.Scan(System.ReadOnlySpan{System.Char})">
+            <summary>Scan the <paramref name="inputSpan"/> starting from base.runtextstart for the next match.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.VersionOnlyRegex_5.RunnerFactory.Runner.TryFindNextPossibleStartingPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Search <paramref name="inputSpan"/> starting from base.runtextpos for the next location a match could possibly start.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if a possible match was found; false if no more matches are possible.</returns>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.VersionOnlyRegex_5.RunnerFactory.Runner.TryMatchAtCurrentPosition(System.ReadOnlySpan{System.Char})">
+            <summary>Determine whether <paramref name="inputSpan"/> at base.runtextpos is a match for the regular expression.</summary>
+            <param name="inputSpan">The text being scanned by the regular expression.</param>
+            <returns>true if the regular expression matches at the current position; otherwise, false.</returns>
+        </member>
+        <member name="T:System.Text.RegularExpressions.Generated.Utilities">
+            <summary>Helper methods used by generated <see cref="T:System.Text.RegularExpressions.Regex"/>-derived implementations.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_defaultTimeout">
+            <summary>Default timeout value set in <see cref="T:System.AppContext"/>, or <see cref="F:System.Text.RegularExpressions.Regex.InfiniteMatchTimeout"/> if none was set.</summary>
+        </member>
+        <member name="F:System.Text.RegularExpressions.Generated.Utilities.s_hasTimeout">
+            <summary>Whether <see cref="F:System.Text.RegularExpressions.Generated.Utilities.s_defaultTimeout"/> is non-infinite.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.StackPop(System.Int32[],System.Int32@,System.Int32@,System.Int32@)">
+            <summary>Pops 2 values from the backtracking stack.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.StackPush(System.Int32[]@,System.Int32@,System.Int32)">
+            <summary>Pushes 1 value onto the backtracking stack.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.StackPush(System.Int32[]@,System.Int32@,System.Int32,System.Int32)">
+            <summary>Pushes 2 values onto the backtracking stack.</summary>
+        </member>
+        <member name="M:System.Text.RegularExpressions.Generated.Utilities.StackPush(System.Int32[]@,System.Int32@,System.Int32,System.Int32,System.Int32)">
+            <summary>Pushes 3 values onto the backtracking stack.</summary>
+        </member>
+    </members>
+</doc>
