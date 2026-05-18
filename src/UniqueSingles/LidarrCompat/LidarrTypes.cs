@@ -112,3 +112,55 @@ namespace NLog
         public virtual void Error(Exception exception, string message, params object?[] args) { }
     }
 }
+
+
+namespace FluentValidation.Results
+{
+    public class ValidationFailure
+    {
+        public ValidationFailure(string propertyName, string errorMessage)
+        {
+            PropertyName = propertyName;
+            ErrorMessage = errorMessage;
+        }
+
+        public string PropertyName { get; }
+        public string ErrorMessage { get; }
+    }
+}
+
+namespace NzbDrone.Core.Notifications
+{
+    using FluentValidation.Results;
+    using NzbDrone.Core.MediaFiles.Events;
+    using NzbDrone.Core.ThingiProvider;
+
+    /// <summary>
+    /// Minimal notification base used when the Lidarr submodule is not present in this worktree.
+    /// </summary>
+    public abstract class NotificationBase<TSettings>
+        where TSettings : IProviderConfig, new()
+    {
+        protected NotificationBase()
+        {
+            Settings = new TSettings();
+        }
+
+        public TSettings Settings { get; set; }
+        public abstract string Name { get; }
+        public virtual string Link => string.Empty;
+        public virtual ValidationFailure? Test() => null;
+        public virtual void OnReleaseImport(AlbumDownloadMessage message) { }
+    }
+}
+
+namespace NzbDrone.Core.MediaFiles.Events
+{
+    using NzbDrone.Core.Music;
+
+    public class AlbumDownloadMessage
+    {
+        public Artist? Artist { get; set; }
+        public Album? Album { get; set; }
+    }
+}
