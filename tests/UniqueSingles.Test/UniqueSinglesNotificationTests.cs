@@ -75,6 +75,44 @@ public class UniqueSinglesNotificationTests
     }
 
     [Fact]
+    public void OnReleaseImport_NullArtist_DoesNotThrowOrCallCleanup()
+    {
+        var cleanup = new RecordingCleanupService();
+        var logger = new RecordingLogger();
+        var notification = new UniqueSinglesNotification(cleanup, logger);
+
+        var exception = Record.Exception(() => notification.OnReleaseImport(new AlbumDownloadMessage
+        {
+            Artist = null,
+            Album = new Album { Id = 20, Title = "Release", AlbumType = "Album" },
+        }));
+
+        Assert.Null(exception);
+        Assert.Equal(0, cleanup.ArtistCleanupCalls);
+        Assert.Equal(0, cleanup.SingleSelfCheckCalls);
+        Assert.Contains(logger.InfoMessages, m => m.Contains("null-artist", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void OnReleaseImport_NullAlbum_DoesNotThrowOrCallCleanup()
+    {
+        var cleanup = new RecordingCleanupService();
+        var logger = new RecordingLogger();
+        var notification = new UniqueSinglesNotification(cleanup, logger);
+
+        var exception = Record.Exception(() => notification.OnReleaseImport(new AlbumDownloadMessage
+        {
+            Artist = new Artist { Id = 10, Name = "Artist" },
+            Album = null,
+        }));
+
+        Assert.Null(exception);
+        Assert.Equal(0, cleanup.ArtistCleanupCalls);
+        Assert.Equal(0, cleanup.SingleSelfCheckCalls);
+        Assert.Contains(logger.InfoMessages, m => m.Contains("null-album", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void OnReleaseImport_ServiceException_IsLoggedAndSwallowed()
     {
         var cleanup = new RecordingCleanupService { ThrowOnArtistCleanup = true };
@@ -84,6 +122,21 @@ public class UniqueSinglesNotificationTests
         var exception = Record.Exception(() => notification.OnReleaseImport(Message(
             new Artist { Id = 10, Name = "Artist" },
             new Album { Id = 20, Title = "Release", AlbumType = "Album" })));
+
+        Assert.Null(exception);
+        Assert.Single(logger.WarnExceptions);
+    }
+
+    [Fact]
+    public void OnReleaseImport_SingleServiceException_IsLoggedAndSwallowed()
+    {
+        var cleanup = new RecordingCleanupService { ThrowOnSingleSelfCheck = true };
+        var logger = new RecordingLogger();
+        var notification = new UniqueSinglesNotification(cleanup, logger);
+
+        var exception = Record.Exception(() => notification.OnReleaseImport(Message(
+            new Artist { Id = 10, Name = "Artist" },
+            new Album { Id = 20, Title = "Release", AlbumType = "Single" })));
 
         Assert.Null(exception);
         Assert.Single(logger.WarnExceptions);
@@ -113,6 +166,7 @@ public class UniqueSinglesNotificationTests
         public Artist? LastArtist { get; private set; }
         public Album? LastAlbum { get; private set; }
         public bool ThrowOnArtistCleanup { get; set; }
+        public bool ThrowOnSingleSelfCheck { get; set; }
 
         public void CleanupSinglesForArtist(Artist artist, Album importedAlbum)
         {
@@ -131,6 +185,11 @@ public class UniqueSinglesNotificationTests
             SingleSelfCheckCalls++;
             LastArtist = artist;
             LastAlbum = importedSingle;
+
+            if (ThrowOnSingleSelfCheck)
+            {
+                throw new InvalidOperationException("boom");
+            }
         }
     }
 
