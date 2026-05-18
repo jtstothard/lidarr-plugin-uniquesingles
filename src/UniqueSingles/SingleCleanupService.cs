@@ -9,7 +9,13 @@ namespace UniqueSingles;
 /// Orchestrates safe single cleanup after Lidarr imports. It scopes all work to the imported artist,
 /// delegates match decisions to TrackMatcher, unmonitors before deleting, and logs every cleanup decision.
 /// </summary>
-public class SingleCleanupService
+public interface ISingleCleanupService
+{
+    void CleanupSinglesForArtist(Artist artist, Album importedAlbum);
+    void CleanupSingleSelfCheck(Artist artist, Album importedSingle);
+}
+
+public class SingleCleanupService : ISingleCleanupService
 {
     private static readonly StringComparer AlbumTypeComparer = StringComparer.OrdinalIgnoreCase;
 
