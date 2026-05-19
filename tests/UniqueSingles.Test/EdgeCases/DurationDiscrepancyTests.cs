@@ -6,198 +6,259 @@ using Xunit;
 namespace UniqueSingles.Test.EdgeCases;
 
 /// <summary>
-/// EC3: Remixes and Alternate Versions
+/// EC11: Duration Discrepancies Between Sources
 ///
-/// Edge case: A single contains a remix or alternate version that doesn't match
-/// any track on albums/EPs. The remix has a different MusicBrainz recording MBID
-/// AND a different title (has "remix" suffix).
+/// Edge case: Same recording has slightly different duration values (mastering differences,
+/// encoding variations, etc.). Example: Album track 185000ms, Single track 184000ms.
 ///
 /// From EDGE-CASES.md:
-/// Example: "Good Hurt" has 3 releases:
-/// - EP "School Nights": "Good Hurt" (recording 877d1dd9)
-/// - Single "Good Hurt": "Good Hurt" (recording 877d1dd9) → SAME → redundant
-/// - Single "Good Hurt (Aevion remix)": "Good Hurt (Aevion remix)" (recording 580646ed)
-///   → DIFFERENT → NOT redundant
+/// "Rule: ±3 seconds for 'same recording' confidence. Larger differences should NOT auto-match.
 ///
-/// Expected behavior: No match, single kept.
+/// Duration tolerance is important. ±3 seconds is reasonable.
+///
+/// But: Some tracks may have larger differences:
+/// - Radio edit vs album version: Could differ by 30-60+ seconds
+/// - Different mastering: Usually within ±5 seconds"
+///
+/// This tests that the ±3s tolerance works correctly.
 /// </summary>
-public class RemixTests
+public class DurationDiscrepancyTests
 {
     [Fact]
-    public void CleanupSinglesForArtist_RemixSingle_DifferentTitleAndMbid_NoMatch_SingleKept()
+    public void CleanupSinglesForArtist_DurationWithinTolerance_Matches()
     {
         var artist = Artist();
-        var importedEp = Album(100, "School Nights", "EP");
-        var remixSingle = Album(200, "Good Hurt (Aevion remix)", "Single");
+        var importedAlbum = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
 
-        var albumService = new RecordingAlbumService(importedEp, remixSingle);
+        // Same recording, 1 second difference (within ±3s tolerance)
+        var albumService = new RecordingAlbumService(importedAlbum, single);
         var trackService = new RecordingTrackService()
-            .WithTracks(importedEp.Id,
-                Track("Good Hurt", 200000, "877d1dd9", fileId: 11))
-            .WithTracks(remixSingle.Id,
-                Track("Good Hurt (Aevion remix)", 210000, "580646ed", fileId: 21));
+            .WithTracks(importedAlbum.Id,
+                Track("Song", 185000, "album-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Song", 184000, "single-mbid", fileId: 21));
 
         var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(remixSingle.Id, File(901, remixSingle.Id, "/music/good-hurt-remix.flac"));
+            .WithFiles(single.Id, File(900, single.Id, "/music/song.flac"));
 
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
 
-        service.CleanupSinglesForArtist(artist, importedEp);
+        service.CleanupSinglesForArtist(artist, importedAlbum);
 
-        // Single should NOT be cleaned (remix doesn't match album track)
-        Assert.True(remixSingle.Monitored);
-        Assert.Empty(albumService.SetMonitoredCalls);
-        Assert.Empty(deleteMediaFiles.DeletedFiles);
-    }
-
-    [Fact]
-    public void CleanupSinglesForArtist_NonRemixSingle_MatchesEp_SingleCleaned()
-    {
-        var artist = Artist();
-        var importedEp = Album(100, "School Nights", "EP");
-        var redundantSingle = Album(200, "Good Hurt", "Single");
-
-        // Same MBID, different duration (within tolerance)
-        var albumService = new RecordingAlbumService(importedEp, redundantSingle);
-        var trackService = new RecordingTrackService()
-            .WithTracks(importedEp.Id,
-                Track("Good Hurt", 200000, "877d1dd9", fileId: 11))
-            .WithTracks(redundantSingle.Id,
-                Track("Good Hurt", 201000, "877d1dd9", fileId: 21));
-
-        var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(redundantSingle.Id, File(901, redundantSingle.Id, "/music/good-hurt.flac"));
-
-        var deleteMediaFiles = new RecordingDeleteMediaFiles();
-        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
-
-        service.CleanupSinglesForArtist(artist, importedEp);
-
-        // Single SHOULD be cleaned (Tier 1 match - same MBID)
-        Assert.False(redundantSingle.Monitored);
-        Assert.Contains((redundantSingle.Id, false), albumService.SetMonitoredCalls);
+        // Single should be cleaned (duration within ±3s)
+        Assert.False(single.Monitored);
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
         Assert.Single(deleteMediaFiles.DeletedFiles);
     }
 
     [Fact]
-    public void CleanupSinglesForArtist_RemixWithSameBaseTitleButDifferentMbid_NoMatch_SingleKept()
+    public void CleanupSinglesForArtist_DurationAtToleranceBoundary_Matches()
     {
         var artist = Artist();
         var importedAlbum = Album(100, "Album", "Album");
-        var remixSingle = Album(200, "Song (Remix)", "Single");
+        var single = Album(200, "Single", "Single");
 
-        var albumService = new RecordingAlbumService(importedAlbum, remixSingle);
+        // Same recording, exactly 3 second difference (at tolerance boundary)
+        var albumService = new RecordingAlbumService(importedAlbum, single);
         var trackService = new RecordingTrackService()
             .WithTracks(importedAlbum.Id,
                 Track("Song", 180000, "album-mbid", fileId: 11))
-            .WithTracks(remixSingle.Id,
-                Track("Song (Remix)", 210000, "remix-mbid", fileId: 21));
+            .WithTracks(single.Id,
+                Track("Song", 183000, "single-mbid", fileId: 21));
 
         var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(remixSingle.Id, File(901, remixSingle.Id, "/music/song-remix.flac"));
+            .WithFiles(single.Id, File(900, single.Id, "/music/song.flac"));
 
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
 
         service.CleanupSinglesForArtist(artist, importedAlbum);
 
-        // Single should NOT be cleaned (different title, different MBID)
-        Assert.True(remixSingle.Monitored);
-        Assert.Empty(albumService.SetMonitoredCalls);
-        Assert.Empty(deleteMediaFiles.DeletedFiles);
+        // Single should be cleaned (duration at ±3s boundary)
+        Assert.False(single.Monitored);
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
     }
 
     [Fact]
-    public void CleanupSingleSelfCheck_RemixSingle_NoMatch_SingleKept()
+    public void CleanupSinglesForArtist_DurationOutsideTolerance_NoMatch()
     {
         var artist = Artist();
-        var album = Album(100, "School Nights", "EP");
-        var importedRemixSingle = Album(200, "Good Hurt (Aevion remix)", "Single");
+        var importedAlbum = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
 
-        var albumService = new RecordingAlbumService(album, importedRemixSingle);
+        // Different recordings, 4 second difference (outside ±3s tolerance)
+        var albumService = new RecordingAlbumService(importedAlbum, single);
         var trackService = new RecordingTrackService()
-            .WithTracks(album.Id,
-                Track("Good Hurt", 200000, "877d1dd9", fileId: 11))
-            .WithTracks(importedRemixSingle.Id,
-                Track("Good Hurt (Aevion remix)", 210000, "580646ed", fileId: 21));
+            .WithTracks(importedAlbum.Id,
+                Track("Song", 180000, "album-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Song", 184000, "single-mbid", fileId: 21));
 
         var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(importedRemixSingle.Id, File(901, importedRemixSingle.Id, "/music/good-hurt-remix.flac"));
+            .WithFiles(single.Id, File(900, single.Id, "/music/song.flac"));
 
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
 
-        service.CleanupSingleSelfCheck(artist, importedRemixSingle);
+        service.CleanupSinglesForArtist(artist, importedAlbum);
 
-        // Single should NOT be cleaned (remix doesn't match album track)
-        Assert.True(importedRemixSingle.Monitored);
-        Assert.Empty(albumService.SetMonitoredCalls);
+        // Single should be kept (duration outside ±3s)
+        Assert.True(single.Monitored);
         Assert.Empty(deleteMediaFiles.DeletedFiles);
     }
 
     [Fact]
-    public void ScanArtistWithOptions_RemixSingle_NoMatch_SingleKept()
+    public void CleanupSinglesForArtist_LargeDurationDifference_NoMatch()
     {
         var artist = Artist();
-        var album = Album(100, "School Nights", "EP");
-        var remixSingle = Album(200, "Good Hurt (Aevion remix)", "Single");
+        var importedAlbum = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
 
-        var albumService = new RecordingAlbumService(album, remixSingle);
+        // Different recordings, 30 second difference (likely different version)
+        var albumService = new RecordingAlbumService(importedAlbum, single);
         var trackService = new RecordingTrackService()
-            .WithTracks(album.Id,
-                Track("Good Hurt", 200000, "877d1dd9", fileId: 11))
-            .WithTracks(remixSingle.Id,
-                Track("Good Hurt (Aevion remix)", 210000, "580646ed", fileId: 21));
+            .WithTracks(importedAlbum.Id,
+                Track("Song", 180000, "album-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Song", 210000, "single-mbid", fileId: 21));
 
         var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(remixSingle.Id, File(901, remixSingle.Id, "/music/good-hurt-remix.flac"));
+            .WithFiles(single.Id, File(900, single.Id, "/music/song.flac"));
 
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
 
+        service.CleanupSinglesForArtist(artist, importedAlbum);
+
+        // Single should be kept (large duration difference = different version)
+        Assert.True(single.Monitored);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void CleanupSingleSelfCheck_DurationWithinTolerance_Matches()
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
+
+        // 2 second difference
+        var albumService = new RecordingAlbumService(album, single);
+        var trackService = new RecordingTrackService()
+            .WithTracks(album.Id,
+                Track("Test", 181000, "rec-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Test", 183000, "rec-mbid", fileId: 21));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(900, single.Id, "/music/test.flac"));
+
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+
+        service.CleanupSingleSelfCheck(artist, single);
+
+        // Should match within tolerance
+        Assert.False(single.Monitored);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void ScanArtistWithOptions_CustomTolerance_UsesConfiguredValue()
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var singleA = Album(200, "Single A", "Single"); // 2s diff - matches with 3s tolerance
+        var singleB = Album(201, "Single B", "Single"); // 4s diff - no match with 3s tolerance
+
+        var albumService = new RecordingAlbumService(singleA, singleB, album);
+        var trackService = new RecordingTrackService()
+            .WithTracks(singleA.Id,
+                Track("Track", 180000, "track-mbid", fileId: 21))
+            .WithTracks(singleB.Id,
+                Track("Track", 186000, "track-mbid-2", fileId: 31))
+            .WithTracks(album.Id,
+                Track("Track", 182000, "track-mbid", fileId: 11));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(singleA.Id, File(900, singleA.Id, "/music/track.flac"))
+            .WithFiles(singleB.Id, File(901, singleB.Id, "/music/track.flac"));
+
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+
+        // Use 3000ms (±3s) tolerance
         var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.FlagOnly);
         var result = service.ScanArtistWithOptions(artist, options);
 
-        // Single checked but skipped (no match)
-        Assert.Equal(1, result.CandidatesChecked);
-        Assert.Equal(0, result.Cleaned);
+        // SingleA cleaned (2s diff within tolerance), SingleB kept (4s diff outside)
+        Assert.Equal(2, result.CandidatesChecked);
+        Assert.Equal(1, result.Cleaned);
         Assert.Equal(1, result.Skipped);
-        Assert.Empty(deleteMediaFiles.DeletedFiles);
-        Assert.True(remixSingle.Monitored);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+        Assert.False(singleA.Monitored);
+        Assert.True(singleB.Monitored);
     }
 
     [Fact]
-    public void CleanupSinglesForArtist_MultipleRemixVersions_AllKept()
+    public void CleanupSinglesForArtist_DurationExactlySame_Matches()
     {
         var artist = Artist();
         var importedAlbum = Album(100, "Album", "Album");
-        var remixSingle1 = Album(200, "Song (Aevion remix)", "Single");
-        var remixSingle2 = Album(201, "Song (Acoustic remix)", "Single");
+        var single = Album(200, "Single", "Single");
 
-        var albumService = new RecordingAlbumService(importedAlbum, remixSingle1, remixSingle2);
+        // Same recording, identical duration
+        var albumService = new RecordingAlbumService(importedAlbum, single);
         var trackService = new RecordingTrackService()
             .WithTracks(importedAlbum.Id,
                 Track("Song", 180000, "album-mbid", fileId: 11))
-            .WithTracks(remixSingle1.Id,
-                Track("Song (Aevion remix)", 210000, "remix1-mbid", fileId: 21))
-            .WithTracks(remixSingle2.Id,
-                Track("Song (Acoustic remix)", 190000, "remix2-mbid", fileId: 22));
+            .WithTracks(single.Id,
+                Track("Song", 180000, "single-mbid", fileId: 21));
 
         var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(remixSingle1.Id, File(901, remixSingle1.Id, "/music/song-aevion.flac"))
-            .WithFiles(remixSingle2.Id, File(902, remixSingle2.Id, "/music/song-acoustic-remix.flac"));
+            .WithFiles(single.Id, File(900, single.Id, "/music/song.flac"));
 
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
 
         service.CleanupSinglesForArtist(artist, importedAlbum);
 
-        // Both remix singles should be kept
-        Assert.True(remixSingle1.Monitored);
-        Assert.True(remixSingle2.Monitored);
-        Assert.Empty(albumService.SetMonitoredCalls);
-        Assert.Empty(deleteMediaFiles.DeletedFiles);
+        // Single should be cleaned (exact duration match)
+        Assert.False(single.Monitored);
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void CleanupSinglesForArtist_NegativeDurationDifference_Matches()
+    {
+        var artist = Artist();
+        var importedAlbum = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
+
+        // Same recording, single is shorter (negative difference)
+        var albumService = new RecordingAlbumService(importedAlbum, single);
+        var trackService = new RecordingTrackService()
+            .WithTracks(importedAlbum.Id,
+                Track("Song", 185000, "album-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Song", 183000, "single-mbid", fileId: 21));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(900, single.Id, "/music/song.flac"));
+
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+
+        service.CleanupSinglesForArtist(artist, importedAlbum);
+
+        // Single should be cleaned (2s difference within tolerance, regardless of direction)
+        Assert.False(single.Monitored);
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
     }
 
     private static SingleCleanupService Service(
@@ -210,7 +271,7 @@ public class RemixTests
         return new SingleCleanupService(albumService, trackService, mediaFileService, deleteMediaFiles, logger ?? new RecordingLogger());
     }
 
-    private static Artist Artist() => new() { Id = 42, Name = "Chappell Roan" };
+    private static Artist Artist() => new() { Id = 42, Name = "Test Artist" };
 
     private static Album Album(int id, string title, string type, bool monitored = true) => new()
     {
