@@ -667,4 +667,99 @@ public class TrackMatcherTests
 
         Assert.Equal(MatchTier.Tier3_TitleOnly, result.Tier);
     }
+
+    // ============================================================
+    // Tolerance-aware overloads
+    // ============================================================
+
+    [Fact]
+    public void FindBestMatch_CustomTolerance_UsesProvidedValue()
+    {
+        var singleTrack = CreateTrack("Song", duration: 200000, foreignRecordingId: "single-id");
+
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Song", duration: 250000, foreignRecordingId: "album-id"),
+        };
+
+        // 50000ms tolerance should match (diff = 50000ms)
+        var result = TrackMatcher.FindBestMatch(singleTrack, albumTracks, 50000);
+
+        Assert.Equal(MatchTier.Tier2_TitleDuration, result.Tier);
+    }
+
+    [Fact]
+    public void FindBestMatch_StrictTolerance_RejectsLongerDuration()
+    {
+        var singleTrack = CreateTrack("Song", duration: 200000, foreignRecordingId: "single-id");
+
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Song", duration: 250000, foreignRecordingId: "album-id"),
+        };
+
+        // 1000ms tolerance should NOT match (diff = 50000ms)
+        var result = TrackMatcher.FindBestMatch(singleTrack, albumTracks, 1000);
+
+        Assert.Equal(MatchTier.Tier3_TitleOnly, result.Tier);
+    }
+
+    [Fact]
+    public void CheckSingle_CustomTolerance_ChangesTier2Behavior()
+    {
+        var singleTracks = new List<Track>
+        {
+            CreateTrack("Song", duration: 200000, foreignRecordingId: "single-id"),
+        };
+
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Song", duration: 250000, foreignRecordingId: "album-id"),
+        };
+
+        // Default tolerance (3000ms) should NOT match → Tier 3 → not redundant
+        var defaultResult = TrackMatcher.CheckSingle(singleTracks, albumTracks);
+        Assert.False(defaultResult.IsRedundant);
+
+        // 50000ms tolerance should match → Tier 2 → redundant
+        var tolerantResult = TrackMatcher.CheckSingle(singleTracks, albumTracks, 50000);
+        Assert.True(tolerantResult.IsRedundant);
+    }
+
+    [Fact]
+    public void CheckSingle_DefaultOverload_Uses3000msTolerance()
+    {
+        var singleTracks = new List<Track>
+        {
+            CreateTrack("Song", duration: 200000, foreignRecordingId: "single-id"),
+        };
+
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Song", duration: 203001, foreignRecordingId: "album-id"),
+        };
+
+        var result = TrackMatcher.CheckSingle(singleTracks, albumTracks);
+
+        // Diff = 3001ms > 3000ms → Tier 3
+        Assert.False(result.IsRedundant);
+    }
+
+    [Fact]
+    public void CheckSingle_CustomTolerance_ExactBoundary()
+    {
+        var singleTracks = new List<Track>
+        {
+            CreateTrack("Song", duration: 200000, foreignRecordingId: "single-id"),
+        };
+
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Song", duration: 250000, foreignRecordingId: "album-id"),
+        };
+
+        // Exact tolerance boundary (50000ms) should match
+        var result = TrackMatcher.CheckSingle(singleTracks, albumTracks, 50000);
+        Assert.True(result.IsRedundant);
+    }
 }

@@ -29,11 +29,26 @@ public static class TrackMatcher
     /// Finds the best match for a single's track against a list of album/EP tracks.
     /// Implements the 3-tier cascade: MBID → title+duration → title-only → no match.
     /// Only considers album tracks where HasFile is true (R012).
+    /// Uses the default 3000 ms duration tolerance.
     /// </summary>
     /// <param name="singleTrack">The track from the single to match.</param>
     /// <param name="albumTracks">All tracks from monitored albums/EPs to compare against.</param>
     /// <returns>The best MatchResult found, or a NoMatch result if nothing matched.</returns>
     public static MatchResult FindBestMatch(Track singleTrack, List<Track> albumTracks)
+    {
+        return FindBestMatch(singleTrack, albumTracks, DurationToleranceMs);
+    }
+
+    /// <summary>
+    /// Finds the best match for a single's track against a list of album/EP tracks.
+    /// Implements the 3-tier cascade: MBID → title+duration → title-only → no match.
+    /// Only considers album tracks where HasFile is true (R012).
+    /// </summary>
+    /// <param name="singleTrack">The track from the single to match.</param>
+    /// <param name="albumTracks">All tracks from monitored albums/EPs to compare against.</param>
+    /// <param name="durationToleranceMs">Duration tolerance in milliseconds for Tier 2 matching.</param>
+    /// <returns>The best MatchResult found, or a NoMatch result if nothing matched.</returns>
+    public static MatchResult FindBestMatch(Track singleTrack, List<Track> albumTracks, int durationToleranceMs)
     {
         if (singleTrack == null)
         {
@@ -66,7 +81,7 @@ public static class TrackMatcher
         }
 
         // Tier 2: Title + Duration match
-        var tier2Match = FindTier2Match(singleTrack, tracksWithFiles);
+        var tier2Match = FindTier2Match(singleTrack, tracksWithFiles, durationToleranceMs);
         if (tier2Match != null)
         {
             return tier2Match;
@@ -93,11 +108,27 @@ public static class TrackMatcher
     /// A single is only redundant if ALL its tracks have at least a Tier 2 match
     /// (multi-track protection rule — R004). Tier 3 matches flag for review but
     /// do NOT make the single redundant.
+    /// Uses the default 3000 ms duration tolerance.
     /// </summary>
     /// <param name="singleTracks">All tracks on the single release.</param>
     /// <param name="albumTracks">All tracks from monitored albums/EPs.</param>
     /// <returns>A SingleRedundancyCheck with per-track results and overall assessment.</returns>
     public static SingleRedundancyCheck CheckSingle(List<Track> singleTracks, List<Track> albumTracks)
+    {
+        return CheckSingle(singleTracks, albumTracks, DurationToleranceMs);
+    }
+
+    /// <summary>
+    /// Checks whether an entire single release is redundant against monitored albums/EPs.
+    /// A single is only redundant if ALL its tracks have at least a Tier 2 match
+    /// (multi-track protection rule — R004). Tier 3 matches flag for review but
+    /// do NOT make the single redundant.
+    /// </summary>
+    /// <param name="singleTracks">All tracks on the single release.</param>
+    /// <param name="albumTracks">All tracks from monitored albums/EPs.</param>
+    /// <param name="durationToleranceMs">Duration tolerance in milliseconds for Tier 2 matching.</param>
+    /// <returns>A SingleRedundancyCheck with per-track results and overall assessment.</returns>
+    public static SingleRedundancyCheck CheckSingle(List<Track> singleTracks, List<Track> albumTracks, int durationToleranceMs)
     {
         if (singleTracks == null || singleTracks.Count == 0)
         {
@@ -120,7 +151,7 @@ public static class TrackMatcher
 
         // Find best match for each single track
         var trackResults = singleTracks
-            .Select(t => FindBestMatch(t, albumTracks))
+            .Select(t => FindBestMatch(t, albumTracks, durationToleranceMs))
             .ToList();
 
         // Determine overall redundancy
@@ -208,7 +239,7 @@ public static class TrackMatcher
         return null;
     }
 
-    private static MatchResult? FindTier2Match(Track singleTrack, List<Track> albumTracks)
+    private static MatchResult? FindTier2Match(Track singleTrack, List<Track> albumTracks, int durationToleranceMs)
     {
         var normalizedSingleTitle = TitleNormalizer.Normalize(singleTrack.Title);
 
@@ -234,7 +265,7 @@ public static class TrackMatcher
 
             var durationDiff = Math.Abs(singleTrack.Duration - albumTrack.Duration);
 
-            if (durationDiff <= DurationToleranceMs)
+            if (durationDiff <= durationToleranceMs)
             {
                 return new MatchResult(
                     singleTrack,
@@ -242,7 +273,7 @@ public static class TrackMatcher
                     MatchTier.Tier2_TitleDuration,
                     Confidence.Tier2,
                     $"Title + Duration match (normalized: '{normalizedSingleTitle}', " +
-                    $"duration diff: {durationDiff}ms ≤ {DurationToleranceMs}ms)");
+                    $"duration diff: {durationDiff}ms ≤ {durationToleranceMs}ms)");
             }
         }
 

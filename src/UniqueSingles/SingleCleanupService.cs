@@ -13,6 +13,8 @@ public interface ISingleCleanupService
 {
     void CleanupSinglesForArtist(Artist artist, Album importedAlbum);
     void CleanupSingleSelfCheck(Artist artist, Album importedSingle);
+    CleanupResult CleanupWithOptions(Artist artist, Album importedAlbum, SingleCleanupOptions options);
+    CleanupResult ScanArtistWithOptions(Artist artist, SingleCleanupOptions options);
 }
 
 public class SingleCleanupService : ISingleCleanupService
@@ -122,6 +124,183 @@ public class SingleCleanupService : ISingleCleanupService
         CheckAndCleanSingle(artist, importedSingle, null, albumTracks);
     }
 
+    /// <summary>
+    /// Cleans singles for an artist using configured options and returns statistics.
+    /// </summary>
+    public CleanupResult CleanupWithOptions(Artist artist, Album importedAlbum, SingleCleanupOptions options)
+    {
+        if (artist == null)
+        {
+            throw new ArgumentNullException(nameof(artist));
+        }
+
+        if (importedAlbum == null)
+        {
+            throw new ArgumentNullException(nameof(importedAlbum));
+        }
+
+        if (options == null)
+        {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        if (!IsAlbumOrEp(importedAlbum))
+        {
+            _logger.Info(
+                "UniqueSingles cleanup skip: imported release is unsupported. artistId={0} artist='{1}' albumId={2} album='{3}' albumType='{4}' reason=unsupported-import-type",
+                artist.Id,
+                artist.Name,
+                importedAlbum.Id,
+                importedAlbum.Title,
+                importedAlbum.AlbumType);
+            return CleanupResult.Empty;
+        }
+
+        var albums = GetAlbumsForArtist(artist);
+        var albumTracks = GetDownloadedAlbumOrEpTracks(albums, options);
+        var candidateSingles = albums
+            .Where(a => IsSingle(a) && a.Id != importedAlbum.Id)
+            .ToList();
+
+        _logger.Info(
+            "UniqueSingles cleanup start: artistId={0} artist='{1}' importedAlbumId={2} importedAlbum='{3}' albumTrackCount={4} candidateSingles={5}",
+            artist.Id,
+            artist.Name,
+            importedAlbum.Id,
+            importedAlbum.Title,
+            albumTracks.Count,
+            candidateSingles.Count);
+
+        var result = CleanupResult.Empty;
+
+        foreach (var single in candidateSingles)
+        {
+            result += CheckAndCleanSingleWithStats(artist, single, importedAlbum, albumTracks, options);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Scans all singles for an artist using configured options and returns statistics.
+    /// </summary>
+    public CleanupResult ScanArtistWithOptions(Artist artist, SingleCleanupOptions options)
+    {
+        if (artist == null)
+        {
+            throw new ArgumentNullException(nameof(artist));
+        }
+
+        if (options == null)
+        {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        var albums = GetAlbumsForArtist(artist);
+        var albumTracks = GetDownloadedAlbumOrEpTracks(albums, options);
+        var candidateSingles = albums.Where(IsSingle).ToList();
+
+        _logger.Info(
+            "UniqueSingles scan start: artistId={0} artist='{1}' albumTrackCount={2} candidateSingles={3}",
+            artist.Id,
+            artist.Name,
+            albumTracks.Count,
+            candidateSingles.Count);
+
+        var result = CleanupResult.Empty;
+
+        foreach (var single in candidateSingles)
+        {
+            result += CheckAndCleanSingleWithStats(artist, single, null, albumTracks, options);
+        }
+
+        return result;
+    }
+
+    private CleanupResult CheckAndCleanSingleWithStats(
+        Artist artist,
+        Album single,
+        Album? comparisonAlbumContext,
+        List<Track> albumTracks,
+        SingleCleanupOptions options)
+    {
+        var candidatesChecked = 1;
+        var cleaned = 0;
+        var skipped = 0;
+        var reviewNeeded = 0;
+        var unmonitorFailures = 0;
+        var deleteFailures = 0;
+
+        if (!single.Monitored)
+        {
+            _logger.Info(
+                "UniqueSingles cleanup skip: single already unmonitored. artistId={0} artist='{1}' singleId={2} single='{3}' reason=already-unmonitored",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title);
+            return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
+        }
+
+        List<Track> singleTracks;
+        try
+        {
+            singleTracks = _trackService.GetTracksByAlbum(single.Id) ?? new List<Track>();
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn(
+                ex,
+                "UniqueSingles cleanup skip: failed to load single tracks. artistId={0} artist='{1}' singleId={2} single='{3}' reason=track-lookup-failed",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title);
+            return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
+        }
+
+        var downloadedSingleTracks = singleTracks.Where(t => t.HasFile).ToList();
+        if (downloadedSingleTracks.Count == 0)
+        {
+            _logger.Info(
+                "UniqueSingles cleanup skip: single has no downloaded track files. artistId={0} artist='{1}' singleId={2} single='{3}' reason=no-downloaded-single-tracks",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title);
+            return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
+        }
+
+        var check = TrackMatcher.CheckSingle(downloadedSingleTracks, albumTracks, options.DurationToleranceMs);
+        LogMatchDecision(artist, single, comparisonAlbumContext, check);
+
+        if (!check.IsRedundant)
+        {
+            if (check.TrackResults.Any(r => r.Tier == MatchTier.Tier3_TitleOnly))
+            {
+                reviewNeeded = 1;
+            }
+            skipped = 1;
+            return new CleanupResult(candidatesChecked, cleaned, skipped, reviewNeeded, unmonitorFailures, deleteFailures);
+        }
+
+        if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext, check))
+        {
+            unmonitorFailures = 1;
+            return new CleanupResult(candidatesChecked, cleaned, 0, 0, unmonitorFailures, 0);
+        }
+
+        if (!TryDeleteSingleFiles(artist, single, comparisonAlbumContext))
+        {
+            cleaned = 1; // Unmonitored successfully
+            deleteFailures = 1;
+            return new CleanupResult(candidatesChecked, cleaned, 0, 0, unmonitorFailures, deleteFailures);
+        }
+
+        cleaned = 1;
+        return new CleanupResult(candidatesChecked, cleaned, 0, 0, 0, 0);
+    }
+
     private void CheckAndCleanSingle(Artist artist, Album single, Album? comparisonAlbumContext, List<Track> albumTracks)
     {
         if (!single.Monitored)
@@ -181,7 +360,7 @@ public class SingleCleanupService : ISingleCleanupService
             return;
         }
 
-        DeleteSingleFiles(artist, single, comparisonAlbumContext);
+        TryDeleteSingleFiles(artist, single, comparisonAlbumContext);
     }
 
     private List<Album> GetAlbumsForArtist(Artist artist)
@@ -201,11 +380,11 @@ public class SingleCleanupService : ISingleCleanupService
         }
     }
 
-    private List<Track> GetDownloadedAlbumOrEpTracks(List<Album> albums)
+    private List<Track> GetDownloadedAlbumOrEpTracks(List<Album> albums, SingleCleanupOptions options)
     {
         var tracks = new List<Track>();
 
-        foreach (var album in albums.Where(IsAlbumOrEp).Where(a => a.Monitored))
+        foreach (var album in albums.Where(a => options.ShouldCompareAgainstType(a.AlbumType)).Where(a => a.Monitored))
         {
             try
             {
@@ -224,6 +403,13 @@ public class SingleCleanupService : ISingleCleanupService
         }
 
         return tracks;
+    }
+
+    private List<Track> GetDownloadedAlbumOrEpTracks(List<Album> albums)
+    {
+        // Legacy path for S01/S02 callers — uses default Album/EP filtering
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.FlagOnly);
+        return GetDownloadedAlbumOrEpTracks(albums, options);
     }
 
     private void LogMatchDecision(Artist artist, Album single, Album? comparisonAlbumContext, SingleRedundancyCheck check)
@@ -295,7 +481,7 @@ public class SingleCleanupService : ISingleCleanupService
         }
     }
 
-    private void DeleteSingleFiles(Artist artist, Album single, Album? comparisonAlbumContext)
+    private bool TryDeleteSingleFiles(Artist artist, Album single, Album? comparisonAlbumContext)
     {
         List<TrackFile> files;
         try
@@ -313,7 +499,7 @@ public class SingleCleanupService : ISingleCleanupService
                 single.Title,
                 comparisonAlbumContext?.Id,
                 comparisonAlbumContext?.Title);
-            return;
+            return false;
         }
 
         if (files.Count == 0)
@@ -326,9 +512,10 @@ public class SingleCleanupService : ISingleCleanupService
                 single.Title,
                 comparisonAlbumContext?.Id,
                 comparisonAlbumContext?.Title);
-            return;
+            return true; // Success - nothing to delete
         }
 
+        var allDeleted = true;
         foreach (var file in files)
         {
             try
@@ -347,6 +534,7 @@ public class SingleCleanupService : ISingleCleanupService
             }
             catch (Exception ex)
             {
+                allDeleted = false;
                 _logger.Warn(
                     ex,
                     "UniqueSingles delete failure: single remains safely unmonitored. artistId={0} artist='{1}' singleId={2} single='{3}' comparisonAlbumId={4} comparisonAlbum='{5}' trackFileId={6} path='{7}' reason=delete-failed",
@@ -360,6 +548,8 @@ public class SingleCleanupService : ISingleCleanupService
                     file.Path);
             }
         }
+
+        return allDeleted;
     }
 
     private static bool IsSingle(Album album)
