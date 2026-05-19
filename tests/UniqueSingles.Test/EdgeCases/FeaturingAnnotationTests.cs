@@ -6,141 +6,157 @@ using Xunit;
 namespace UniqueSingles.Test.EdgeCases;
 
 /// <summary>
-/// EC1: Multi-Track Singles with Exclusive B-Sides
+/// EC9: Multi-Artist / Featuring Tracks
 ///
-/// Edge case: A single has multiple tracks, and not all tracks appear on albums/EPs.
-/// Expected behavior: Single is kept (not unmonitored or deleted) because it has exclusive content.
+/// Edge case: A track featuring another artist might have different title formatting:
+/// - Album: "Parting Gift" (feat. Brendan Kelly)
+/// - Single: "Parting Gift"
 ///
 /// From EDGE-CASES.md:
-/// "Only mark single as redundant if ALL its tracks appear on monitored albums/EPs."
+/// "Mitigation: Title matching should strip featuring annotations for comparison."
 ///
-/// Example: "Bitter" single (ID 8185) — 2 tracks:
-/// - Track 1: "Bitter" (recording 51bd7a30) — NOT on any album → unique
-/// - Track 2: "Die Young (acoustic)" (recording 60ca4db8) — NOT on any album → unique
-///
-/// If we check track 1 ("Bitter") and it WAS on an album:
-/// - Wrong to delete the whole single — track 2 is exclusive
-/// - Must check ALL tracks on the single before deciding
+/// The implementation uses TitleNormalizer which handles stripping featuring annotations
+/// as part of the normalization process.
 /// </summary>
-public class MultiTrackSingleTests
+public class FeaturingAnnotationTests
 {
     [Fact]
-    public void CleanupSinglesForArtist_MultiTrackSingleWithExclusiveBSide_SingleIsKept()
+    public void CleanupSinglesForArtist_AlbumHasFeaturingSingleDoesNot_MatchesAfterNormalization()
     {
         var artist = Artist();
-        var importedAlbum = Album(100, "Main Album", "Album");
-        var multiTrackSingle = Album(200, "Bitter", "Single");
+        var importedAlbum = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
 
-        // Album has track 1 only ("Bitter")
-        var albumService = new RecordingAlbumService(importedAlbum, multiTrackSingle);
+        // Same recording, album has (feat. ...) suffix
+        var albumService = new RecordingAlbumService(importedAlbum, single);
         var trackService = new RecordingTrackService()
             .WithTracks(importedAlbum.Id,
-                Track("Bitter", 180000, "album-mbid-1", fileId: 11))
-            .WithTracks(multiTrackSingle.Id,
-                Track("Bitter", 181000, "single-mbid-1", fileId: 21),  // Matches album
-                Track("Die Young (acoustic)", 190000, "single-mbid-2", fileId: 22));  // Exclusive B-side
+                Track("Parting Gift (feat. Brendan Kelly)", 180000, "recording-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Parting Gift", 181000, "recording-mbid", fileId: 21));
 
         var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(multiTrackSingle.Id,
-                File(900, multiTrackSingle.Id, "/music/bitter.flac"),
-                File(901, multiTrackSingle.Id, "/music/die-young-acoustic.flac"));
+            .WithFiles(single.Id, File(900, single.Id, "/music/parting-gift.flac"));
 
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
 
         service.CleanupSinglesForArtist(artist, importedAlbum);
 
-        // Single should NOT be unmonitored (it has exclusive B-side)
-        Assert.True(multiTrackSingle.Monitored);
-        Assert.Empty(albumService.SetMonitoredCalls);
-        Assert.Empty(mediaFileService.AlbumLookupIds);
-        Assert.Empty(deleteMediaFiles.DeletedFiles);
+        // Single should be cleaned (matches after stripping featuring annotation)
+        Assert.False(single.Monitored);
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+        Assert.Equal(900, deleteMediaFiles.DeletedFiles[0].TrackFile.Id);
     }
 
     [Fact]
-    public void CleanupSinglesForArtist_MultiTrackSingleWithAllTracksOnAlbum_SingleIsCleaned()
+    public void CleanupSinglesForArtist_SingleHasFeaturingAlbumDoesNot_MatchesAfterNormalization()
     {
         var artist = Artist();
-        var importedAlbum = Album(100, "Main Album", "Album");
-        var multiTrackSingle = Album(200, "Double Track", "Single");
+        var importedAlbum = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
 
-        // Album has both tracks from the single
-        var albumService = new RecordingAlbumService(importedAlbum, multiTrackSingle);
+        // Same recording, single has (feat. ...) suffix
+        var albumService = new RecordingAlbumService(importedAlbum, single);
         var trackService = new RecordingTrackService()
             .WithTracks(importedAlbum.Id,
-                Track("Track One", 180000, "album-mbid-1", fileId: 11),
-                Track("Track Two", 190000, "album-mbid-2", fileId: 12))
-            .WithTracks(multiTrackSingle.Id,
-                Track("Track One", 181000, "single-mbid-1", fileId: 21),
-                Track("Track Two", 191000, "single-mbid-2", fileId: 22));
+                Track("Track Name", 180000, "recording-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Track Name (feat. Another Artist)", 181000, "recording-mbid", fileId: 21));
 
         var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(multiTrackSingle.Id,
-                File(900, multiTrackSingle.Id, "/music/track-one.flac"),
-                File(901, multiTrackSingle.Id, "/music/track-two.flac"));
+            .WithFiles(single.Id, File(900, single.Id, "/music/track.flac"));
 
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
 
         service.CleanupSinglesForArtist(artist, importedAlbum);
 
-        // Single SHOULD be unmonitored and deleted (all tracks are on album)
-        Assert.False(multiTrackSingle.Monitored);
-        Assert.Contains((multiTrackSingle.Id, false), albumService.SetMonitoredCalls);
-        Assert.Equal(2, deleteMediaFiles.DeletedFiles.Count);
+        // Single should be cleaned (matches after stripping featuring annotation)
+        Assert.False(single.Monitored);
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
     }
 
     [Fact]
-    public void CleanupSingleSelfCheck_MultiTrackSingleWithExclusiveBSide_SingleIsKept()
+    public void CleanupSinglesForArtist_DifferentFeaturingArtists_DoesNotMatch()
     {
         var artist = Artist();
-        var album = Album(100, "Main Album", "Album");
-        var multiTrackSingle = Album(200, "The Subway / The Giver", "Single");
+        var importedAlbum = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
 
-        // Album has track 1 only
-        var albumService = new RecordingAlbumService(album, multiTrackSingle);
+        // Different recordings (both have featuring but different artists)
+        // Durations differ by 10s - outside ±3s tolerance so no Tier 2 match
+        var albumService = new RecordingAlbumService(importedAlbum, single);
         var trackService = new RecordingTrackService()
-            .WithTracks(album.Id,
-                Track("The Subway", 180000, "album-mbid-1", fileId: 11))
-            .WithTracks(multiTrackSingle.Id,
-                Track("The Subway", 181000, "single-mbid-1", fileId: 21),
-                Track("The Giver", 190000, "single-mbid-2", fileId: 22));  // Exclusive
+            .WithTracks(importedAlbum.Id,
+                Track("Song (feat. Artist A)", 180000, "album-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Song (feat. Artist B)", 190000, "single-mbid", fileId: 21));
 
         var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(multiTrackSingle.Id,
-                File(900, multiTrackSingle.Id, "/music/the-subway.flac"),
-                File(901, multiTrackSingle.Id, "/music/the-giver.flac"));
+            .WithFiles(single.Id, File(900, single.Id, "/music/song.flac"));
 
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
 
-        service.CleanupSingleSelfCheck(artist, multiTrackSingle);
+        service.CleanupSinglesForArtist(artist, importedAlbum);
 
-        // Single should NOT be unmonitored (has exclusive B-side)
-        Assert.True(multiTrackSingle.Monitored);
-        Assert.Empty(albumService.SetMonitoredCalls);
+        // Single should be kept (different featured artists + duration outside tolerance)
+        // After normalization both become "song", but 10s diff > 3s tolerance = no Tier 2 match
+        Assert.True(single.Monitored);
         Assert.Empty(deleteMediaFiles.DeletedFiles);
     }
 
     [Fact]
-    public void ScanArtistWithOptions_MultiTrackSingleWithExclusiveBSide_SingleIsKept()
+    public void CleanupSingleSelfCheck_FeaturingInAlbum_Matches()
     {
         var artist = Artist();
-        var album = Album(100, "Main Album", "Album");
-        var multiTrackSingle = Album(200, "Bitter", "Single");
+        var album = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
 
-        var albumService = new RecordingAlbumService(album, multiTrackSingle);
+        var albumService = new RecordingAlbumService(album, single);
         var trackService = new RecordingTrackService()
             .WithTracks(album.Id,
-                Track("Bitter", 180000, "album-mbid", fileId: 11))
-            .WithTracks(multiTrackSingle.Id,
-                Track("Bitter", 181000, "single-mbid-1", fileId: 21),
-                Track("Die Young (acoustic)", 190000, "single-mbid-2", fileId: 22));
+                Track("Test (featuring Guest)", 180000, "rec-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Test", 181000, "rec-mbid", fileId: 21));
 
         var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(multiTrackSingle.Id,
-                File(900, multiTrackSingle.Id, "/music/bitter.flac"),
-                File(901, multiTrackSingle.Id, "/music/die-young-acoustic.flac"));
+            .WithFiles(single.Id, File(900, single.Id, "/music/test.flac"));
+
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+
+        service.CleanupSingleSelfCheck(artist, single);
+
+        // Should match after normalization
+        Assert.False(single.Monitored);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void ScanArtistWithOptions_VariousFeaturingFormats_MatchesCorrectly()
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var singleA = Album(200, "Single A", "Single"); // Same recording
+        var singleB = Album(201, "Single B", "Single"); // Different recording
+
+        var albumService = new RecordingAlbumService(singleA, singleB, album);
+        var trackService = new RecordingTrackService()
+            .WithTracks(singleA.Id,
+                Track("Collab", 180000, "collab-mbid", fileId: 21))
+            .WithTracks(singleB.Id,
+                Track("Different", 185000, "different-mbid", fileId: 31))
+            .WithTracks(album.Id,
+                Track("Collab (feat. Partner)", 181000, "collab-mbid", fileId: 11),
+                Track("Other", 190000, "other-mbid", fileId: 12));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(singleA.Id, File(900, singleA.Id, "/music/collab.flac"))
+            .WithFiles(singleB.Id, File(901, singleB.Id, "/music/different.flac"));
 
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
@@ -148,12 +164,41 @@ public class MultiTrackSingleTests
         var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.FlagOnly);
         var result = service.ScanArtistWithOptions(artist, options);
 
-        // Single checked but skipped (has exclusive content)
-        Assert.Equal(1, result.CandidatesChecked);
-        Assert.Equal(0, result.Cleaned);
+        // SingleA cleaned (matches after stripping feat), SingleB kept (no match)
+        Assert.Equal(2, result.CandidatesChecked);
+        Assert.Equal(1, result.Cleaned);
         Assert.Equal(1, result.Skipped);
-        Assert.Empty(deleteMediaFiles.DeletedFiles);
-        Assert.True(multiTrackSingle.Monitored);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+        Assert.False(singleA.Monitored);
+        Assert.True(singleB.Monitored);
+    }
+
+    [Fact]
+    public void CleanupSinglesForArtist_FeaturingWithParenthesesAndBrackets_Matches()
+    {
+        var artist = Artist();
+        var importedAlbum = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
+
+        // Test various featuring annotation formats
+        var albumService = new RecordingAlbumService(importedAlbum, single);
+        var trackService = new RecordingTrackService()
+            .WithTracks(importedAlbum.Id,
+                Track("Song [feat. X]", 180000, "rec-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Song (featuring Y)", 181000, "rec-mbid", fileId: 21));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(900, single.Id, "/music/song.flac"));
+
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+
+        service.CleanupSinglesForArtist(artist, importedAlbum);
+
+        // Should match (both formats stripped)
+        Assert.False(single.Monitored);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
     }
 
     private static SingleCleanupService Service(
@@ -166,7 +211,7 @@ public class MultiTrackSingleTests
         return new SingleCleanupService(albumService, trackService, mediaFileService, deleteMediaFiles, logger ?? new RecordingLogger());
     }
 
-    private static Artist Artist() => new() { Id = 42, Name = "Chappell Roan" };
+    private static Artist Artist() => new() { Id = 42, Name = "Test Artist" };
 
     private static Album Album(int id, string title, string type, bool monitored = true) => new()
     {

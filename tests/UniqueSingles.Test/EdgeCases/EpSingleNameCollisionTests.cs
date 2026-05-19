@@ -1,3 +1,4 @@
+using NLog;
 using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.Music;
 using Xunit;
@@ -236,7 +237,6 @@ public class EpSingleNameCollisionTests
         Duration = duration,
         ForeignRecordingId = mbid,
         TrackFileId = fileId,
-        HasFile = fileId > 0,
     };
 
     private static TrackFile File(int id, int albumId, string path) => new()

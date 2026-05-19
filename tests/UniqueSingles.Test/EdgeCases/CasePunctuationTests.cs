@@ -6,155 +6,187 @@ using Xunit;
 namespace UniqueSingles.Test.EdgeCases;
 
 /// <summary>
-/// EC4: Same Track Name, Different Recordings (Acoustic/Live)
+/// EC10: Case and Punctuation Differences
 ///
-/// Edge case: Album and single have tracks with the same name but are different
-/// recordings (acoustic vs original, live vs studio). Different MBID, different title
-/// (has "acoustic" suffix), different duration.
+/// Edge case: Same song appears with different casing and punctuation across releases.
+/// Example: Album has "HOT TO GO!" (all caps + exclamation), single might have "Hot to Go!"
 ///
 /// From EDGE-CASES.md:
-/// Example: "Die Young" variants:
-/// - EP "School Nights": "Die Young" (recording 91d3eb2a, duration 225901ms)
-/// - Single "Bitter": "Die Young (acoustic)" (recording 60ca4db8, duration 245000ms)
+/// "Mitigation: Case-insensitive title matching + normalize punctuation:
+///  - Remove extra spaces, punctuation variations
+///  - Strip trailing punctuation
+///  - Normalize spaces"
 ///
-/// These are different recordings:
-/// - Different foreignRecordingId
-/// - Different title (has "(acoustic)" suffix)
-/// - Different duration (225s vs 245s)
-///
-/// Expected behavior: No match, single kept.
+/// The implementation uses TitleNormalizer which handles case normalization,
+/// punctuation removal, and space normalization.
 /// </summary>
-public class AcousticTests
+public class CasePunctuationTests
 {
     [Fact]
-    public void CleanupSinglesForArtist_AcousticVersion_DifferentTitleMbidDuration_NoMatch_SingleKept()
-    {
-        var artist = Artist();
-        var importedEp = Album(100, "School Nights", "EP");
-        var acousticSingle = Album(200, "Bitter", "Single");
-
-        var albumService = new RecordingAlbumService(importedEp, acousticSingle);
-        var trackService = new RecordingTrackService()
-            .WithTracks(importedEp.Id,
-                Track("Die Young", 225901, "91d3eb2a", fileId: 11))
-            .WithTracks(acousticSingle.Id,
-                Track("Die Young (acoustic)", 245000, "60ca4db8", fileId: 21));
-
-        var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(acousticSingle.Id, File(901, acousticSingle.Id, "/music/die-young-acoustic.flac"));
-
-        var deleteMediaFiles = new RecordingDeleteMediaFiles();
-        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
-
-        service.CleanupSinglesForArtist(artist, importedEp);
-
-        // Single should NOT be cleaned (acoustic doesn't match original)
-        Assert.True(acousticSingle.Monitored);
-        Assert.Empty(albumService.SetMonitoredCalls);
-        Assert.Empty(deleteMediaFiles.DeletedFiles);
-    }
-
-    [Fact]
-    public void CleanupSinglesForArtist_LiveVersion_DifferentTitleMbidDuration_NoMatch_SingleKept()
-    {
-        var artist = Artist();
-        var importedAlbum = Album(100, "Studio Album", "Album");
-        var liveSingle = Album(200, "Song (Live)", "Single");
-
-        var albumService = new RecordingAlbumService(importedAlbum, liveSingle);
-        var trackService = new RecordingTrackService()
-            .WithTracks(importedAlbum.Id,
-                Track("Song", 180000, "studio-mbid", fileId: 11))
-            .WithTracks(liveSingle.Id,
-                Track("Song (Live)", 210000, "live-mbid", fileId: 21));
-
-        var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(liveSingle.Id, File(901, liveSingle.Id, "/music/song-live.flac"));
-
-        var deleteMediaFiles = new RecordingDeleteMediaFiles();
-        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
-
-        service.CleanupSinglesForArtist(artist, importedAlbum);
-
-        // Single should NOT be cleaned (live version doesn't match studio)
-        Assert.True(liveSingle.Monitored);
-        Assert.Empty(albumService.SetMonitoredCalls);
-        Assert.Empty(deleteMediaFiles.DeletedFiles);
-    }
-
-    [Fact]
-    public void CleanupSinglesForArtist_AcousticVersion_CloseDurationButDifferentTitle_NoMatch_SingleKept()
+    public void CleanupSinglesForArtist_CaseDifference_MatchesAfterNormalization()
     {
         var artist = Artist();
         var importedAlbum = Album(100, "Album", "Album");
-        var acousticSingle = Album(200, "Song (acoustic)", "Single");
+        var single = Album(200, "Single", "Single");
 
-        // Close duration but different title (acoustic vs original)
-        var albumService = new RecordingAlbumService(importedAlbum, acousticSingle);
+        // Same recording, different case
+        var albumService = new RecordingAlbumService(importedAlbum, single);
         var trackService = new RecordingTrackService()
             .WithTracks(importedAlbum.Id,
-                Track("Song", 180000, "album-mbid", fileId: 11))
-            .WithTracks(acousticSingle.Id,
-                Track("Song (acoustic)", 182000, "acoustic-mbid", fileId: 21));
+                Track("HOT TO GO!", 180000, "recording-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Hot to Go!", 181000, "recording-mbid", fileId: 21));
 
         var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(acousticSingle.Id, File(901, acousticSingle.Id, "/music/song-acoustic.flac"));
+            .WithFiles(single.Id, File(900, single.Id, "/music/hot-to-go.flac"));
 
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
 
         service.CleanupSinglesForArtist(artist, importedAlbum);
 
-        // Single should NOT be cleaned (different titles: "Song" vs "Song (acoustic)")
-        Assert.True(acousticSingle.Monitored);
-        Assert.Empty(albumService.SetMonitoredCalls);
-        Assert.Empty(deleteMediaFiles.DeletedFiles);
+        // Single should be cleaned (case normalized)
+        Assert.False(single.Monitored);
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
     }
 
     [Fact]
-    public void CleanupSingleSelfCheck_AcousticVersion_NoMatch_SingleKept()
+    public void CleanupSinglesForArtist_PunctuationDifference_MatchesAfterNormalization()
     {
         var artist = Artist();
-        var album = Album(100, "School Nights", "EP");
-        var acousticSingle = Album(200, "Bitter", "Single");
+        var importedAlbum = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
 
-        var albumService = new RecordingAlbumService(album, acousticSingle);
+        // Same recording, different punctuation
+        var albumService = new RecordingAlbumService(importedAlbum, single);
         var trackService = new RecordingTrackService()
-            .WithTracks(album.Id,
-                Track("Die Young", 225901, "91d3eb2a", fileId: 11))
-            .WithTracks(acousticSingle.Id,
-                Track("Die Young (acoustic)", 245000, "60ca4db8", fileId: 21));
+            .WithTracks(importedAlbum.Id,
+                Track("Song!", 180000, "recording-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Song", 181000, "recording-mbid", fileId: 21));
 
         var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(acousticSingle.Id, File(901, acousticSingle.Id, "/music/die-young-acoustic.flac"));
+            .WithFiles(single.Id, File(900, single.Id, "/music/song.flac"));
 
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
 
-        service.CleanupSingleSelfCheck(artist, acousticSingle);
+        service.CleanupSinglesForArtist(artist, importedAlbum);
 
-        // Single should NOT be cleaned (acoustic doesn't match original)
-        Assert.True(acousticSingle.Monitored);
-        Assert.Empty(albumService.SetMonitoredCalls);
-        Assert.Empty(deleteMediaFiles.DeletedFiles);
+        // Single should be cleaned (punctuation normalized)
+        Assert.False(single.Monitored);
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
     }
 
     [Fact]
-    public void ScanArtistWithOptions_AcousticVersion_NoMatch_SingleKept()
+    public void CleanupSinglesForArtist_CaseAndPunctuationCombined_Matches()
     {
         var artist = Artist();
-        var album = Album(100, "School Nights", "EP");
-        var acousticSingle = Album(200, "Bitter", "Single");
+        var importedAlbum = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
 
-        var albumService = new RecordingAlbumService(album, acousticSingle);
+        // Same recording, different case and punctuation
+        var albumService = new RecordingAlbumService(importedAlbum, single);
         var trackService = new RecordingTrackService()
-            .WithTracks(album.Id,
-                Track("Die Young", 225901, "91d3eb2a", fileId: 11))
-            .WithTracks(acousticSingle.Id,
-                Track("Die Young (acoustic)", 245000, "60ca4db8", fileId: 21));
+            .WithTracks(importedAlbum.Id,
+                Track("YES!!!", 180000, "recording-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("yes", 181000, "recording-mbid", fileId: 21));
 
         var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(acousticSingle.Id, File(901, acousticSingle.Id, "/music/die-young-acoustic.flac"));
+            .WithFiles(single.Id, File(900, single.Id, "/music/yes.flac"));
+
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+
+        service.CleanupSinglesForArtist(artist, importedAlbum);
+
+        // Single should be cleaned (both case and punctuation normalized)
+        Assert.False(single.Monitored);
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void CleanupSinglesForArtist_ExtraSpaces_Matches()
+    {
+        var artist = Artist();
+        var importedAlbum = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
+
+        // Same recording, different spacing
+        var albumService = new RecordingAlbumService(importedAlbum, single);
+        var trackService = new RecordingTrackService()
+            .WithTracks(importedAlbum.Id,
+                Track("Track Name", 180000, "recording-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Track  Name", 181000, "recording-mbid", fileId: 21));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(900, single.Id, "/music/track.flac"));
+
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+
+        service.CleanupSinglesForArtist(artist, importedAlbum);
+
+        // Single should be cleaned (spaces normalized)
+        Assert.False(single.Monitored);
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void CleanupSingleSelfCheck_VariousPunctuationStyles_Matches()
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
+
+        // Test: album has multiple exclamation marks, single has none
+        var albumService = new RecordingAlbumService(album, single);
+        var trackService = new RecordingTrackService()
+            .WithTracks(album.Id,
+                Track("Wow!!!", 180000, "rec-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("wow", 181000, "rec-mbid", fileId: 21));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(900, single.Id, "/music/wow.flac"));
+
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+
+        service.CleanupSingleSelfCheck(artist, single);
+
+        // Should match after normalization
+        Assert.False(single.Monitored);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void ScanArtistWithOptions_MixedCasePunctuation_DifferentResults()
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var singleA = Album(200, "Single A", "Single"); // Match (case/punc diff)
+        var singleB = Album(201, "Single B", "Single"); // No match (different title)
+
+        var albumService = new RecordingAlbumService(singleA, singleB, album);
+        var trackService = new RecordingTrackService()
+            .WithTracks(singleA.Id,
+                Track("song", 180000, "song-mbid", fileId: 21))
+            .WithTracks(singleB.Id,
+                Track("different", 185000, "different-mbid", fileId: 31))
+            .WithTracks(album.Id,
+                Track("SONG???", 181000, "song-mbid", fileId: 11),
+                Track("Other", 190000, "other-mbid", fileId: 12));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(singleA.Id, File(900, singleA.Id, "/music/song.flac"))
+            .WithFiles(singleB.Id, File(901, singleB.Id, "/music/different.flac"));
 
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
@@ -162,43 +194,40 @@ public class AcousticTests
         var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.FlagOnly);
         var result = service.ScanArtistWithOptions(artist, options);
 
-        // Single checked but skipped (no match)
-        Assert.Equal(1, result.CandidatesChecked);
-        Assert.Equal(0, result.Cleaned);
+        // SingleA cleaned (matches after case/punc normalization), SingleB kept
+        Assert.Equal(2, result.CandidatesChecked);
+        Assert.Equal(1, result.Cleaned);
         Assert.Equal(1, result.Skipped);
-        Assert.Empty(deleteMediaFiles.DeletedFiles);
-        Assert.True(acousticSingle.Monitored);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+        Assert.False(singleA.Monitored);
+        Assert.True(singleB.Monitored);
     }
 
     [Fact]
-    public void CleanupSinglesForArtist_MultiTrackSingleWithAcousticBSide_SingleKept()
+    public void CleanupSinglesForArtist_DifferentPunctuationInMiddle_NoMatch()
     {
         var artist = Artist();
-        var importedEp = Album(100, "School Nights", "EP");
-        var multiTrackSingle = Album(200, "Bitter", "Single");
+        var importedAlbum = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
 
-        // EP has "Die Young", single has "Bitter" + "Die Young (acoustic)"
-        var albumService = new RecordingAlbumService(importedEp, multiTrackSingle);
+        // Different recordings (hyphen vs space - not just trailing punctuation)
+        var albumService = new RecordingAlbumService(importedAlbum, single);
         var trackService = new RecordingTrackService()
-            .WithTracks(importedEp.Id,
-                Track("Die Young", 225901, "91d3eb2a", fileId: 11))
-            .WithTracks(multiTrackSingle.Id,
-                Track("Bitter", 200000, "bitter-mbid", fileId: 21),  // Not on EP
-                Track("Die Young (acoustic)", 245000, "60ca4db8", fileId: 22));  // Not on EP
+            .WithTracks(importedAlbum.Id,
+                Track("Track-Name", 180000, "album-mbid", fileId: 11))
+            .WithTracks(single.Id,
+                Track("Track Name", 181000, "single-mbid", fileId: 21));
 
         var mediaFileService = new RecordingMediaFileService()
-            .WithFiles(multiTrackSingle.Id,
-                File(901, multiTrackSingle.Id, "/music/bitter.flac"),
-                File(902, multiTrackSingle.Id, "/music/die-young-acoustic.flac"));
+            .WithFiles(single.Id, File(900, single.Id, "/music/track.flac"));
 
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
 
-        service.CleanupSinglesForArtist(artist, importedEp);
+        service.CleanupSinglesForArtist(artist, importedAlbum);
 
-        // Single should NOT be cleaned (both tracks are unique)
-        Assert.True(multiTrackSingle.Monitored);
-        Assert.Empty(albumService.SetMonitoredCalls);
+        // Single should be kept (different punctuation in middle = different title)
+        Assert.True(single.Monitored);
         Assert.Empty(deleteMediaFiles.DeletedFiles);
     }
 
@@ -212,7 +241,7 @@ public class AcousticTests
         return new SingleCleanupService(albumService, trackService, mediaFileService, deleteMediaFiles, logger ?? new RecordingLogger());
     }
 
-    private static Artist Artist() => new() { Id = 42, Name = "Chappell Roan" };
+    private static Artist Artist() => new() { Id = 42, Name = "Test Artist" };
 
     private static Album Album(int id, string title, string type, bool monitored = true) => new()
     {
