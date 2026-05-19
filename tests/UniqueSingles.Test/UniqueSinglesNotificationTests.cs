@@ -191,6 +191,33 @@ public class UniqueSinglesNotificationTests
                 throw new InvalidOperationException("boom");
             }
         }
+
+        public CleanupResult CleanupWithOptions(Artist artist, Album importedAlbum, SingleCleanupOptions options)
+        {
+            ArtistCleanupCalls++;
+            LastArtist = artist;
+            LastAlbum = importedAlbum;
+
+            if (ThrowOnArtistCleanup)
+            {
+                throw new InvalidOperationException("boom");
+            }
+
+            return CleanupResult.Empty;
+        }
+
+        public CleanupResult ScanArtistWithOptions(Artist artist, SingleCleanupOptions options)
+        {
+            ArtistCleanupCalls++;
+            LastArtist = artist;
+
+            if (ThrowOnArtistCleanup)
+            {
+                throw new InvalidOperationException("boom");
+            }
+
+            return CleanupResult.Empty;
+        }
     }
 
     private sealed class RecordingLogger : Logger

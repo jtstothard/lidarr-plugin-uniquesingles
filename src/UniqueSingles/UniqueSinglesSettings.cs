@@ -30,4 +30,33 @@ public class UniqueSinglesSettings : IProviderConfig
 
     [FieldDefinition(Order = 2, Label = "Title-only match action", Type = FieldType.Select, HelpText = "Safe behavior for Tier 3 title-only matches. Defaults to flag-only and never deletes.")]
     public Tier3Action Tier3Action { get; set; }
+
+    /// <summary>
+    /// Converts settings to a validated SingleCleanupOptions snapshot.
+    /// The ReleaseTypesToCheck field specifies which album types are used for comparison tracks.
+    /// Malformed or empty values fall back to safe defaults (Album, EP).
+    /// </summary>
+    public SingleCleanupOptions ToCleanupOptions()
+    {
+        var releaseTypes = ParseReleaseTypes(ReleaseTypesToCheck);
+        return new SingleCleanupOptions(DurationToleranceMs, releaseTypes, Tier3Action);
+    }
+
+    private static HashSet<string> ParseReleaseTypes(string? releaseTypesString)
+    {
+        if (string.IsNullOrWhiteSpace(releaseTypesString))
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" };
+        }
+
+        var types = releaseTypesString.Split(',')
+            .Select(t => t.Trim())
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => char.ToUpper(t[0]) + t.Substring(1).ToLower())
+            .ToList();
+
+        return types.Count > 0
+            ? new HashSet<string>(types, StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" };
+    }
 }

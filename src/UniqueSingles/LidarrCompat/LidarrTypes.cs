@@ -74,6 +74,15 @@ namespace NzbDrone.Core.Music
         List<Track> GetTracksByAlbum(int albumId);
         List<Track> GetTracksByArtist(int artistId);
     }
+
+    /// <summary>
+    /// Minimal artist service contract needed for full-library scan.
+    /// </summary>
+    public interface IArtistService
+    {
+        List<Artist> GetAllArtists();
+        Artist? GetArtist(int artistId);
+    }
 }
 
 namespace NzbDrone.Core.MediaFiles
@@ -162,5 +171,54 @@ namespace NzbDrone.Core.MediaFiles.Events
     {
         public Artist? Artist { get; set; }
         public Album? Album { get; set; }
+    }
+}
+
+namespace NzbDrone.Core.Messaging.Commands
+{
+    /// <summary>
+    /// Minimal command base class required by Lidarr's command system.
+    /// Real Lidarr commands track progress, support cancellation, and emit completion events.
+    /// This shim provides just enough for compilation and testing without the full runtime.
+    /// </summary>
+    public abstract class Command
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public DateTime? StartedOn { get; set; }
+        public DateTime? EndedOn { get; set; }
+        public TimeSpan? Duration => EndedOn.HasValue && StartedOn.HasValue
+            ? EndedOn.Value - StartedOn.Value
+            : null;
+        public string Message { get; set; } = string.Empty;
+        public CompletionStatus Status { get; set; } = CompletionStatus.Pending;
+
+        protected Command()
+        {
+        }
+
+        protected Command(string name)
+        {
+            Name = name;
+        }
+    }
+
+    public enum CompletionStatus
+    {
+        Pending,
+        Started,
+        Complete,
+        Failed,
+        Cancelled
+    }
+
+    /// <summary>
+    /// Command executor interface required by Lidarr's command system.
+    /// Implementations are resolved via dependency injection when a command is executed.
+    /// </summary>
+    public interface IExecute<TCommand>
+        where TCommand : Command
+    {
+        void Execute(TCommand message);
     }
 }
