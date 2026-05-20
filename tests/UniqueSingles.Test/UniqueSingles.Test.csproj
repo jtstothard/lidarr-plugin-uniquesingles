@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <Compile Include="PluginIdentitySmokeTests.cs" />
+    <Compile Include="UniqueSinglesImportCoordinatorTests.cs" />
     <Compile Include="UniqueSinglesNotificationTests.cs" />
     <Compile Include="UniqueSinglesProviderSchemaTests.cs" />
     <Compile Include="UniqueSinglesSettingsSchemaTests.cs" />
