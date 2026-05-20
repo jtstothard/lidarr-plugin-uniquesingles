@@ -14,7 +14,10 @@ public enum Tier3Action
     FlagOnly = 0,
 
     [FieldOption(Label = "Skip cleanup", Hint = "Ignore title-only matches and leave the single alone.")]
-    Skip = 1
+    Skip = 1,
+
+    [FieldOption(Label = "Auto-clean", Hint = "Automatically clean title-only matches. Use with caution — this deletes singles that match by title alone.")]
+    AutoClean = 2
 }
 
 /// <summary>
