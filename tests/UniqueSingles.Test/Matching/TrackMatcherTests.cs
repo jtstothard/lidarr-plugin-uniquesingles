@@ -57,6 +57,9 @@ public class TrackMatcherTests
         Assert.False(result.IsRedundant);
         Assert.Equal(2, result.TrackResults.Count);
         Assert.Contains(result.TrackResults, r => r.Tier == MatchTier.NoMatch);
+        Assert.Equal(
+            "1 of 2 tracks not found on monitored albums: Die Young (acoustic). Single has exclusive content.",
+            result.SummaryReason);
     }
 
     // ============================================================
@@ -494,7 +497,9 @@ public class TrackMatcherTests
         var result = TrackMatcher.CheckSingle(singleTracks, albumTracks);
 
         Assert.False(result.IsRedundant);
-        Assert.Contains("review", result.SummaryReason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            "Track 'Song Name' has title-only match (Tier 3). Manual review required — duration mismatch suggests it may be a different version.",
+            result.SummaryReason);
     }
 
     // ============================================================

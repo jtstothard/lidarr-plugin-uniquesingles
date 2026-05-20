@@ -237,6 +237,34 @@ public class SingleCleanupServiceTests
     }
 
     [Fact]
+    public void CleanupSingleSelfCheckWithOptions_AlreadyUnmonitored_ReturnsSkippedCountsAndReason()
+    {
+        var artist = Artist();
+        var comparisonAlbum = Album(100, "Album", "Album");
+        var importedSingle = Album(200, "Already Done", "Single", monitored: false);
+        var logger = new RecordingLogger();
+        var albumService = new RecordingAlbumService(comparisonAlbum, importedSingle);
+        var trackService = new RecordingTrackService()
+            .WithTracks(comparisonAlbum.Id, Track("Song", 180000, "album-mbid", fileId: 11));
+        var mediaFileService = new RecordingMediaFileService();
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, logger);
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album" }, Tier3Action.FlagOnly);
+
+        var result = service.CleanupSingleSelfCheckWithOptions(artist, importedSingle, options);
+
+        Assert.Equal(1, result.CandidatesChecked);
+        Assert.Equal(0, result.Cleaned);
+        Assert.Equal(1, result.Skipped);
+        Assert.Equal(0, result.ReviewNeeded);
+        Assert.Equal(0, result.UnmonitorFailures);
+        Assert.Equal(0, result.DeleteFailures);
+        Assert.DoesNotContain(importedSingle.Id, trackService.AlbumLookupIds);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+        Assert.Contains(logger.InfoMessages, m => m.Contains("reason=already-unmonitored", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void CleanupSinglesForArtist_SingleWithNoDownloadedTracks_IsSkipped()
     {
         var artist = Artist();
@@ -255,6 +283,36 @@ public class SingleCleanupServiceTests
         Assert.Empty(albumService.SetMonitoredCalls);
         Assert.Empty(mediaFileService.AlbumLookupIds);
         Assert.Empty(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void CleanupSingleSelfCheckWithOptions_NoDownloadedTracks_ReturnsSkippedCountsAndReason()
+    {
+        var artist = Artist();
+        var comparisonAlbum = Album(100, "Album", "Album");
+        var importedSingle = Album(200, "Not Downloaded", "Single");
+        var logger = new RecordingLogger();
+        var albumService = new RecordingAlbumService(comparisonAlbum, importedSingle);
+        var trackService = new RecordingTrackService()
+            .WithTracks(comparisonAlbum.Id, Track("Song", 180000, "album-mbid", fileId: 11))
+            .WithTracks(importedSingle.Id, Track("Song", 180000, "single-mbid", fileId: 0));
+        var mediaFileService = new RecordingMediaFileService();
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, logger);
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album" }, Tier3Action.FlagOnly);
+
+        var result = service.CleanupSingleSelfCheckWithOptions(artist, importedSingle, options);
+
+        Assert.Equal(1, result.CandidatesChecked);
+        Assert.Equal(0, result.Cleaned);
+        Assert.Equal(1, result.Skipped);
+        Assert.Equal(0, result.ReviewNeeded);
+        Assert.Equal(0, result.UnmonitorFailures);
+        Assert.Equal(0, result.DeleteFailures);
+        Assert.Empty(albumService.SetMonitoredCalls);
+        Assert.Empty(mediaFileService.AlbumLookupIds);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+        Assert.Contains(logger.InfoMessages, m => m.Contains("reason=no-downloaded-single-tracks", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -582,7 +640,7 @@ public class SingleCleanupServiceTests
         Assert.Equal(1, result.DeleteFailures);
         Assert.False(single.Monitored);
         Assert.Single(deleteMediaFiles.DeletedFiles); // Unmonitor attempt logged
-        Assert.Contains(logger.WarnMessages, m => m.Contains("delete failure", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(logger.WarnMessages, m => m.Contains("reason=delete-failed", StringComparison.OrdinalIgnoreCase));
     }
 
     private static SingleCleanupService Service(
