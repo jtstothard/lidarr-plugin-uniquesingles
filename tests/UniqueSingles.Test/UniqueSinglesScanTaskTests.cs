@@ -167,16 +167,119 @@ public class UniqueSinglesScanTaskTests
         Assert.Equal(1440, task.IntervalMinutes);
     }
 
+    // ── Settings resolution priority chain ─────────────────────────────
+
+    [Fact]
+    public void ResolveCleanupOptions_UsesNotificationSettings_WhenAvailable()
+    {
+        // Arrange: notification factory returns a definition with custom UniqueSinglesSettings
+        var notificationSettings = new UniqueSinglesSettings
+        {
+            DurationToleranceMs = 5000,
+            ReleaseTypesToCheck = "Album",
+            Tier3Action = Tier3Action.Skip
+        };
+        var notificationDef = new NotificationDefinition { Settings = notificationSettings };
+        var factory = new StubNotificationFactory(new List<NotificationDefinition> { notificationDef });
+
+        var artists = new List<Artist> { MonitoredArtist(1, "Artist A") };
+        var artistService = new StubArtistService(artists);
+        var cleanupService = new StubCleanupService();
+        cleanupService.Results[1] = CleanupResult.Empty;
+
+        var task = CreateTask(cleanupService, artistService, notificationFactory: factory);
+
+        // Act
+        task.Execute(new UniqueSinglesScanCommand());
+
+        // Assert: the cleanup service was called, meaning the options were resolved
+        // from notification settings (DurationToleranceMs=5000 → clamped to 5000)
+        Assert.Single(cleanupService.ScannedArtists);
+    }
+
+    [Fact]
+    public void ResolveCleanupOptions_FallsBackToMetadataProviderSettings_WhenNoNotification()
+    {
+        // Arrange: no notification definitions (empty list), metadata provider has settings
+        var factory = new StubNotificationFactory(new List<NotificationDefinition>());
+        var artists = new List<Artist> { MonitoredArtist(1, "Artist A") };
+        var artistService = new StubArtistService(artists);
+        var cleanupService = new StubCleanupService();
+        cleanupService.Results[1] = CleanupResult.Empty;
+
+        var task = CreateTask(cleanupService, artistService, notificationFactory: factory);
+        // CreateTask sets Definition.Settings = new UniqueSinglesSettings() by default
+
+        // Act
+        task.Execute(new UniqueSinglesScanCommand());
+
+        // Assert: task used metadata provider settings (fallback) — scan completes normally
+        Assert.Single(cleanupService.ScannedArtists);
+    }
+
+    [Fact]
+    public void ResolveCleanupOptions_FallsBackToDefaults_WhenNoSettingsAtAll()
+    {
+        // Arrange: no notifications, no metadata provider settings
+        var factory = new StubNotificationFactory(new List<NotificationDefinition>());
+        var artists = new List<Artist> { MonitoredArtist(1, "Artist A") };
+        var artistService = new StubArtistService(artists);
+        var cleanupService = new StubCleanupService();
+        cleanupService.Results[1] = CleanupResult.Empty;
+
+        var task = CreateTask(cleanupService, artistService, notificationFactory: factory);
+        task.Definition = new NzbDrone.Core.Extras.Metadata.MetadataDefinition
+        {
+            Settings = null // No provider settings either
+        };
+
+        // Act
+        task.Execute(new UniqueSinglesScanCommand());
+
+        // Assert: defaults were used — scan completes normally
+        Assert.Single(cleanupService.ScannedArtists);
+    }
+
+    [Fact]
+    public void ResolveCleanupOptions_LogsWarning_WhenMultipleNotifications()
+    {
+        // Arrange: two notification definitions with UniqueSinglesSettings
+        var settings1 = new UniqueSinglesSettings { DurationToleranceMs = 5000 };
+        var settings2 = new UniqueSinglesSettings { DurationToleranceMs = 7000 };
+        var defs = new List<NotificationDefinition>
+        {
+            new() { Settings = settings1 },
+            new() { Settings = settings2 }
+        };
+        var factory = new StubNotificationFactory(defs);
+
+        var artists = new List<Artist> { MonitoredArtist(1, "Artist A") };
+        var artistService = new StubArtistService(artists);
+        var cleanupService = new StubCleanupService();
+        cleanupService.Results[1] = CleanupResult.Empty;
+        using var logger = new TestLogger();
+
+        var task = CreateTask(cleanupService, artistService, logger.Logger, factory);
+
+        // Act
+        task.Execute(new UniqueSinglesScanCommand());
+
+        // Assert: warning logged about multiple notifications
+        Assert.True(logger.HasMessageContaining("multiple UniqueSingles notifications found"));
+        Assert.Single(cleanupService.ScannedArtists);
+    }
+
     // ── Helper methods and stubs ──────────────────────────────────────
 
     private static UniqueSinglesScanTask CreateTask(
         StubCleanupService cleanupService,
         StubArtistService artistService,
-        Logger? logger = null)
+        Logger? logger = null,
+        INotificationFactory? notificationFactory = null)
     {
         var log = logger ?? new TestLogger().Logger;
-        var notificationFactory = new StubNotificationFactory();
-        var task = new UniqueSinglesScanTask(cleanupService, artistService, notificationFactory, log);
+        var factory = notificationFactory ?? new StubNotificationFactory();
+        var task = new UniqueSinglesScanTask(cleanupService, artistService, factory, log);
         // Provider infrastructure sets Definition before use; replicate in tests
         task.Definition = new NzbDrone.Core.Extras.Metadata.MetadataDefinition
         {
@@ -284,7 +387,14 @@ public class UniqueSinglesScanTaskTests
 
     private sealed class StubNotificationFactory : INotificationFactory
     {
-        public List<NotificationDefinition> All() => new List<NotificationDefinition>();
+        private readonly List<NotificationDefinition> _definitions;
+
+        public StubNotificationFactory(List<NotificationDefinition>? definitions = null)
+        {
+            _definitions = definitions ?? new List<NotificationDefinition>();
+        }
+
+        public List<NotificationDefinition> All() => _definitions;
 
         // Unused INotificationFactory members — throw for safety
         public List<INotification> GetAvailableProviders() => throw new NotImplementedException();
