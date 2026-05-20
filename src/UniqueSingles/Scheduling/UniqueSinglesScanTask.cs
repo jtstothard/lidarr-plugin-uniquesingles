@@ -103,6 +103,13 @@ namespace NzbDrone.Core.Plugins
                 throw new ArgumentNullException(nameof(command));
             }
 
+            // Per-artist scan: if ArtistId is provided, scan only that artist
+            if (command.ArtistId.HasValue && command.ArtistId.Value > 0)
+            {
+                ExecutePerArtistScan(command);
+                return;
+            }
+
             _logger.Info("UniqueSingles scheduled scan starting");
 
             List<Artist> allArtists;
@@ -176,6 +183,62 @@ namespace NzbDrone.Core.Plugins
                 aggregatedResult.Skipped,
                 aggregatedResult.ReviewNeeded,
                 artistsFailed > 0 ? $", {artistsFailed} failed" : "");
+        }
+
+        /// <summary>
+        /// Scans a single artist by ID. Resolves cleanup options, fetches the artist,
+        /// runs the scan, and sets a completion message on the command.
+        /// Logs error and returns early if the artist is not found.
+        /// </summary>
+        private void ExecutePerArtistScan(UniqueSinglesScanCommand command)
+        {
+            var artistId = command.ArtistId.Value;
+            _logger.Info("UniqueSingles per-artist scan starting: artistId={0}", artistId);
+
+            var options = ResolveCleanupOptions();
+
+            Artist artist;
+            try
+            {
+                artist = _artistService.GetArtist(artistId);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "UniqueSingles per-artist scan failed: artist {0} not found", artistId);
+                command.ResultMessage = string.Format("Per-artist scan failed: artist {0} not found", artistId);
+                return;
+            }
+
+            if (artist == null)
+            {
+                _logger.Error("UniqueSingles per-artist scan failed: artist {0} not found", artistId);
+                command.ResultMessage = string.Format("Per-artist scan failed: artist {0} not found", artistId);
+                return;
+            }
+
+            var result = _cleanupService.ScanArtistWithOptions(artist, options);
+
+            var failedSuffix = result.UnmonitorFailures > 0 || result.DeleteFailures > 0
+                ? string.Format(", {0} unmonitor failures, {1} delete failures", result.UnmonitorFailures, result.DeleteFailures)
+                : "";
+
+            command.ResultMessage = string.Format(
+                "1 artist scanned, {0} singles cleaned, {1} skipped, {2} flagged for review{3}",
+                result.Cleaned,
+                result.Skipped,
+                result.ReviewNeeded,
+                failedSuffix);
+
+            _logger.Info(
+                "UniqueSingles per-artist scan complete: artistId={0} artist='{1}' candidatesChecked={2} cleaned={3} skipped={4} reviewNeeded={5} unmonitorFailures={6} deleteFailures={7}",
+                artist.Id,
+                artist.Name,
+                result.CandidatesChecked,
+                result.Cleaned,
+                result.Skipped,
+                result.ReviewNeeded,
+                result.UnmonitorFailures,
+                result.DeleteFailures);
         }
     }
 }
