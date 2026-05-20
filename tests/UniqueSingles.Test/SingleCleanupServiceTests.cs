@@ -643,6 +643,132 @@ public class SingleCleanupServiceTests
         Assert.Contains(logger.WarnMessages, m => m.Contains("reason=delete-failed", StringComparison.OrdinalIgnoreCase));
     }
 
+    // ============================================================
+    // AutoClean tests
+    // ============================================================
+
+    [Fact]
+    public void ScanArtistWithOptions_AutoClean_Tier3OnlyMatch_ProceedsToCleanup()
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var tier3Single = Album(200, "Maybe Different Version", "Single");
+        var albumService = new RecordingAlbumService(album, tier3Single);
+        var logger = new RecordingLogger();
+        var trackService = new RecordingTrackService()
+            .WithTracks(album.Id,
+                Track("Song", 220000, "album-mbid", fileId: 11))
+            .WithTracks(tier3Single.Id,
+                Track("Song", 180000, "single-mbid", fileId: 21));
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(tier3Single.Id, File(901, tier3Single.Id, "/music/tier3.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, logger);
+
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.AutoClean);
+        var result = service.ScanArtistWithOptions(artist, options);
+
+        Assert.Equal(1, result.CandidatesChecked);
+        Assert.Equal(1, result.Cleaned);
+        Assert.Equal(0, result.Skipped);
+        Assert.Equal(0, result.ReviewNeeded);
+        Assert.False(tier3Single.Monitored);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+        Assert.Contains(logger.InfoMessages, m => m.Contains("cleanup-approved", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ScanArtistWithOptions_AutoClean_NoMatchTrack_StillSkipped()
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var single = Album(200, "Mixed Match", "Single");
+        var albumService = new RecordingAlbumService(album, single);
+        var logger = new RecordingLogger();
+        var trackService = new RecordingTrackService()
+            .WithTracks(album.Id,
+                Track("Song", 180000, "album-mbid", fileId: 11),
+                Track("Other Song", 200000, "album-mbid-2", fileId: 12))
+            .WithTracks(single.Id,
+                Track("Song", 220000, "single-mbid", fileId: 21),    // Tier3: title match, duration mismatch
+                Track("Exclusive Track", 190000, "single-mbid-2", fileId: 22)); // NoMatch: no title match
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(901, single.Id, "/music/mixed.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, logger);
+
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.AutoClean);
+        var result = service.ScanArtistWithOptions(artist, options);
+
+        Assert.Equal(1, result.CandidatesChecked);
+        Assert.Equal(0, result.Cleaned);
+        Assert.Equal(1, result.Skipped);
+        Assert.True(single.Monitored);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void ScanArtistWithOptions_AutoClean_UnmonitorFailure_ReturnsUnmonitorFailure()
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var tier3Single = Album(200, "Maybe Different Version", "Single");
+        var albumService = new RecordingAlbumService(album, tier3Single)
+        {
+            ThrowOnSetAlbumMonitored = true,
+        };
+        var logger = new RecordingLogger();
+        var trackService = new RecordingTrackService()
+            .WithTracks(album.Id,
+                Track("Song", 220000, "album-mbid", fileId: 11))
+            .WithTracks(tier3Single.Id,
+                Track("Song", 180000, "single-mbid", fileId: 21));
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(tier3Single.Id, File(901, tier3Single.Id, "/music/tier3.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, logger);
+
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.AutoClean);
+        var result = service.ScanArtistWithOptions(artist, options);
+
+        Assert.Equal(1, result.CandidatesChecked);
+        Assert.Equal(0, result.Cleaned);
+        Assert.Equal(1, result.UnmonitorFailures);
+        Assert.True(tier3Single.Monitored);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void ScanArtistWithOptions_AutoClean_FlagOnlyBehavior_UnchangedRegression()
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var tier3Single = Album(200, "Maybe Different Version", "Single");
+        var albumService = new RecordingAlbumService(album, tier3Single);
+        var logger = new RecordingLogger();
+        var trackService = new RecordingTrackService()
+            .WithTracks(album.Id,
+                Track("Song", 220000, "album-mbid", fileId: 11))
+            .WithTracks(tier3Single.Id,
+                Track("Song", 180000, "single-mbid", fileId: 21));
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(tier3Single.Id, File(901, tier3Single.Id, "/music/tier3.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, logger);
+
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.FlagOnly);
+        var result = service.ScanArtistWithOptions(artist, options);
+
+        // Existing FlagOnly behavior: Tier3 → review-needed, skipped, no cleanup
+        Assert.Equal(1, result.CandidatesChecked);
+        Assert.Equal(0, result.Cleaned);
+        Assert.Equal(1, result.Skipped);
+        Assert.Equal(1, result.ReviewNeeded);
+        Assert.True(tier3Single.Monitored);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+        Assert.Contains(logger.InfoMessages, m => m.Contains("review-needed", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static SingleCleanupService Service(
         RecordingAlbumService albumService,
         RecordingTrackService trackService,

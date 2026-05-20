@@ -269,6 +269,76 @@ public class UniqueSinglesScanTaskTests
         Assert.Single(cleanupService.ScannedArtists);
     }
 
+    // ── Per-artist scan tests ─────────────────────────────────────────
+
+    [Fact]
+    public void Execute_PerArtistScan_ScansOnlyTargetArtist()
+    {
+        var artists = new List<Artist>
+        {
+            MonitoredArtist(1, "Target Artist"),
+            MonitoredArtist(2, "Other Artist"),
+            UnmonitoredArtist(3, "Unmonitored Artist")
+        };
+        var artistService = new StubArtistService(artists);
+        var cleanupService = new StubCleanupService();
+        cleanupService.Results[1] = new CleanupResult(5, 2, 2, 0, 0, 0);
+        using var logger = new TestLogger();
+
+        var task = CreateTask(cleanupService, artistService, logger.Logger);
+        var command = new UniqueSinglesScanCommand { ArtistId = 1 };
+
+        task.Execute(command);
+
+        Assert.Single(cleanupService.ScannedArtists);
+        Assert.Equal(1, cleanupService.ScannedArtists[0].Id);
+        Assert.Contains("1 artist scanned", command.ResultMessage);
+        Assert.Contains("2 singles cleaned", command.ResultMessage);
+    }
+
+    [Fact]
+    public void Execute_PerArtistScan_InvalidArtistId_SetsErrorMessage()
+    {
+        var artists = new List<Artist>
+        {
+            MonitoredArtist(1, "Artist A")
+        };
+        var artistService = new StubArtistService(artists);
+        var cleanupService = new StubCleanupService();
+        using var logger = new TestLogger();
+
+        var task = CreateTask(cleanupService, artistService, logger.Logger);
+        var command = new UniqueSinglesScanCommand { ArtistId = 999 };
+
+        task.Execute(command);
+
+        Assert.Contains("not found", command.ResultMessage);
+        Assert.Empty(cleanupService.ScannedArtists);
+    }
+
+    [Fact]
+    public void Execute_PerArtistScan_NullArtistId_ScansAll()
+    {
+        var artists = new List<Artist>
+        {
+            MonitoredArtist(1, "Artist A"),
+            MonitoredArtist(2, "Artist B"),
+            UnmonitoredArtist(3, "Artist C")
+        };
+        var artistService = new StubArtistService(artists);
+        var cleanupService = new StubCleanupService();
+        using var logger = new TestLogger();
+
+        var task = CreateTask(cleanupService, artistService, logger.Logger);
+        var command = new UniqueSinglesScanCommand { ArtistId = null };
+
+        task.Execute(command);
+
+        // Regression: existing full-library behavior unchanged
+        Assert.Equal(2, cleanupService.ScannedArtists.Count);
+        Assert.Contains("2 artists scanned", command.ResultMessage);
+    }
+
     // ── Helper methods and stubs ──────────────────────────────────────
 
     private static UniqueSinglesScanTask CreateTask(
@@ -311,7 +381,9 @@ public class UniqueSinglesScanTaskTests
         public List<Artist> GetAllArtists() => _artists ?? new List<Artist>();
 
         // Unused IArtistService members — throw for safety
-        public Artist GetArtist(int artistId) => throw new NotImplementedException();
+        public Artist GetArtist(int artistId) =>
+            _artists?.FirstOrDefault(a => a.Id == artistId)
+            ?? throw new InvalidOperationException($"Artist {artistId} not found");
         public Artist GetArtistByMetadataId(int artistMetadataId) => throw new NotImplementedException();
         public List<Artist> GetArtists(IEnumerable<int> artistIds) => throw new NotImplementedException();
         public Artist AddArtist(Artist newArtist, bool doRefresh) => throw new NotImplementedException();
