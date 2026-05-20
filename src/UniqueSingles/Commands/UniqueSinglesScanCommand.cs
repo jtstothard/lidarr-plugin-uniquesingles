@@ -1,6 +1,6 @@
 using NzbDrone.Core.Messaging.Commands;
 
-namespace UniqueSingles.Commands;
+namespace NzbDrone.Core.Plugins;
 
 /// <summary>
 /// Command to scan the entire library for redundant single releases.
@@ -10,7 +10,6 @@ namespace UniqueSingles.Commands;
 public class UniqueSinglesScanCommand : Command
 {
     public UniqueSinglesScanCommand()
-        : base("Scan for redundant singles")
     {
     }
 

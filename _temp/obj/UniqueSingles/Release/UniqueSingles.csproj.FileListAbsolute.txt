@@ -9,3 +9,17 @@
 /Users/jay/.gsd/projects/28483ff377f5/worktrees/M001/_temp/obj/UniqueSingles/Release/refint/Lidarr.Plugin.UniqueSingles.dll
 /Users/jay/.gsd/projects/28483ff377f5/worktrees/M001/_temp/obj/UniqueSingles/Release/Lidarr.Plugin.UniqueSingles.pdb
 /Users/jay/.gsd/projects/28483ff377f5/worktrees/M001/_temp/obj/UniqueSingles/Release/ref/Lidarr.Plugin.UniqueSingles.dll
+/Users/jay/lidarr-unique-singles/_temp/obj/UniqueSingles/Release/UniqueSingles.csproj.AssemblyReference.cache
+/Users/jay/lidarr-unique-singles/_temp/obj/UniqueSingles/Release/UniqueSingles.GeneratedMSBuildEditorConfig.editorconfig
+/Users/jay/lidarr-unique-singles/_temp/obj/UniqueSingles/Release/Sentry.Attributes.cs
+/Users/jay/lidarr-unique-singles/_temp/obj/UniqueSingles/Release/UniqueSingles.AssemblyInfoInputs.cache
+/Users/jay/lidarr-unique-singles/_temp/obj/UniqueSingles/Release/UniqueSingles.AssemblyInfo.cs
+/Users/jay/lidarr-unique-singles/_temp/obj/UniqueSingles/Release/UniqueSingles.csproj.CoreCompileInputs.cache
+/Users/jay/lidarr-unique-singles/_temp/obj/UniqueSingles/Release/UniqueSingles.sourcelink.json
+/Users/jay/lidarr-unique-singles/_temp/bin/Release/UniqueSingles/Lidarr.Plugin.UniqueSingles.deps.json
+/Users/jay/lidarr-unique-singles/_temp/bin/Release/UniqueSingles/Lidarr.Plugin.UniqueSingles.dll
+/Users/jay/lidarr-unique-singles/_temp/bin/Release/UniqueSingles/Lidarr.Plugin.UniqueSingles.pdb
+/Users/jay/lidarr-unique-singles/_temp/obj/UniqueSingles/Release/Lidarr.Plugin.UniqueSingles.dll
+/Users/jay/lidarr-unique-singles/_temp/obj/UniqueSingles/Release/refint/Lidarr.Plugin.UniqueSingles.dll
+/Users/jay/lidarr-unique-singles/_temp/obj/UniqueSingles/Release/Lidarr.Plugin.UniqueSingles.pdb
+/Users/jay/lidarr-unique-singles/_temp/obj/UniqueSingles/Release/ref/Lidarr.Plugin.UniqueSingles.dll

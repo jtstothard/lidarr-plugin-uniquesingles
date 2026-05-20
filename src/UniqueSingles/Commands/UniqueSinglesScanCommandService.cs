@@ -1,10 +1,13 @@
+using System.Linq;
+using System;
+using System.Collections.Generic;
 using NzbDrone.Core.MediaFiles;
 using NLog;
 using NzbDrone.Core.Music;
 using NzbDrone.Core.Messaging.Commands;
-using UniqueSingles.Matching;
+using NzbDrone.Core.Plugins;
 
-namespace UniqueSingles.Commands;
+namespace NzbDrone.Core.Plugins;
 
 /// <summary>
 /// Executor for full-library redundant single scan.
@@ -43,12 +46,8 @@ public class UniqueSinglesScanCommandService : IExecute<UniqueSinglesScanCommand
             throw new ArgumentNullException(nameof(command));
         }
 
-        command.StartedOn = DateTime.UtcNow;
-        command.Status = CompletionStatus.Started;
-
         try
         {
-            _logger.Info("UniqueSingles scan started: commandId={0}", command.Id);
 
             List<Artist> allArtists;
             try
@@ -58,10 +57,7 @@ public class UniqueSinglesScanCommandService : IExecute<UniqueSinglesScanCommand
             catch (Exception ex)
             {
                 _logger.Error(ex, "UniqueSingles scan failed: could not load artists");
-                command.Status = CompletionStatus.Failed;
-                command.Message = "Failed to load artists";
-                command.EndedOn = DateTime.UtcNow;
-                return;
+                throw;
             }
 
             var monitoredArtists = allArtists.Where(a => IsMonitored(a)).ToList();
@@ -93,24 +89,12 @@ public class UniqueSinglesScanCommandService : IExecute<UniqueSinglesScanCommand
                 }
             }
 
-            command.Status = CompletionStatus.Complete;
-            command.EndedOn = DateTime.UtcNow;
-            command.Message = $"Scan complete: {artistsScanned} artists scanned, {artistsSkipped} skipped, {artistsFailed} failed";
-
-            _logger.Info(
-                "UniqueSingles scan complete: commandId={0} artistsScanned={1} artistsSkipped={2} artistsFailed={3} durationMs={4}",
-                command.Id,
-                artistsScanned,
-                artistsSkipped,
-                artistsFailed,
-                command.Duration?.TotalMilliseconds);
+            _logger.Info("UniqueSingles scan complete: artistsScanned={0} artistsSkipped={1} artistsFailed={2}", artistsScanned, artistsSkipped, artistsFailed);
         }
         catch (Exception ex)
         {
-            command.Status = CompletionStatus.Failed;
-            command.Message = "Scan failed with exception";
-            command.EndedOn = DateTime.UtcNow;
             _logger.Error(ex, "UniqueSingles scan failed with exception");
+            throw;
         }
     }
 

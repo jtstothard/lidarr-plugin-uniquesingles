@@ -1,11 +1,13 @@
+using System;
 using FluentValidation.Results;
 using NLog;
 using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.MediaFiles.Events;
 using NzbDrone.Core.Music;
 using NzbDrone.Core.Notifications;
+using AlbumDownloadMessage = NzbDrone.Core.Notifications.AlbumDownloadMessage;
 
-namespace UniqueSingles;
+namespace NzbDrone.Core.Plugins;
 
 /// <summary>
 /// Lidarr Connection notification entry point for Unique Singles release-import handling.
@@ -35,11 +37,13 @@ public class UniqueSinglesNotification : NotificationBase<UniqueSinglesSettings>
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public override string Name => Plugin.Name;
+    public override string Name => UniqueSinglesPlugin.DisplayName;
 
-    public override ValidationFailure? Test()
+    public override string Link => UniqueSinglesPlugin.RepositoryUrl;
+
+    public override ValidationResult Test()
     {
-        return null;
+        return new ValidationResult();
     }
 
     public override void OnReleaseImport(AlbumDownloadMessage message)
