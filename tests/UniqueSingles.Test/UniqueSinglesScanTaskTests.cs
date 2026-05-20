@@ -349,7 +349,7 @@ public class UniqueSinglesScanTaskTests
     {
         var log = logger ?? new TestLogger().Logger;
         var factory = notificationFactory ?? new StubNotificationFactory();
-        var task = new UniqueSinglesScanTask(cleanupService, artistService, factory, log);
+        var task = new UniqueSinglesScanTask(cleanupService, artistService, new Lazy<INotificationFactory>(() => factory), log);
         // Provider infrastructure sets Definition before use; replicate in tests
         task.Definition = new NzbDrone.Core.Extras.Metadata.MetadataDefinition
         {

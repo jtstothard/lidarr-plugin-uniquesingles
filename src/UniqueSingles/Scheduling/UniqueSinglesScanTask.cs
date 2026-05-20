@@ -23,12 +23,19 @@ namespace NzbDrone.Core.Plugins
         private readonly ISingleCleanupService _cleanupService;
         private readonly IArtistService _artistService;
         private readonly Logger _logger;
-        private readonly INotificationFactory _notificationFactory;
+        private readonly Lazy<INotificationFactory> _notificationFactory;
 
+        /// <summary>
+        /// INotificationFactory is resolved lazily to avoid a DryIoc recursive dependency at startup.
+        /// Eager injection triggers resolution of all INotification implementations (including
+        /// third-party plugins like Tubifarry's QueueCleaner), which can have circular dependency
+        /// chains. Lazy resolution defers this until scan execution time, when the container
+        /// is fully initialized and the dependency graph is stable.
+        /// </summary>
         public UniqueSinglesScanTask(
             ISingleCleanupService cleanupService,
             IArtistService artistService,
-            INotificationFactory notificationFactory,
+            Lazy<INotificationFactory> notificationFactory,
             Logger logger)
         {
             _cleanupService = cleanupService ?? throw new ArgumentNullException(nameof(cleanupService));
@@ -45,7 +52,7 @@ namespace NzbDrone.Core.Plugins
         {
             try
             {
-                var allNotifications = _notificationFactory.All();
+                var allNotifications = _notificationFactory.Value.All();
                 var matching = allNotifications
                     .Where(d => d.Settings is UniqueSinglesSettings)
                     .ToList();
