@@ -10,38 +10,44 @@ namespace NzbDrone.Core.Plugins;
 
 public enum Tier3Action
 {
+    [FieldOption(Label = "Flag for review", Hint = "Keep title-only matches for manual review. Never auto-delete.")]
     FlagOnly = 0,
+
+    [FieldOption(Label = "Skip cleanup", Hint = "Ignore title-only matches and leave the single alone.")]
     Skip = 1
 }
 
 /// <summary>
 /// Lidarr provider settings for the Unique Singles connection.
-/// Defaults are intentionally conservative: only singles are checked and title-only matches are never deleted.
+/// Defaults are intentionally conservative: comparison tracks come from Album/EP releases,
+/// and title-only matches are flagged for review rather than deleted.
 /// </summary>
 public class UniqueSinglesSettings : IProviderConfig
 {
+    private static readonly string[] SafeDefaultReleaseTypes = { "Album", "EP" };
+    private const string DefaultReleaseTypesToCheck = "Album, EP";
     private static readonly UniqueSinglesSettingsValidator Validator = new UniqueSinglesSettingsValidator();
 
     public UniqueSinglesSettings()
     {
         DurationToleranceMs = 3000;
-        ReleaseTypesToCheck = "Single";
+        ReleaseTypesToCheck = DefaultReleaseTypesToCheck;
         Tier3Action = Tier3Action.FlagOnly;
     }
 
     [FieldDefinition(0, Label = "Duration tolerance (ms)", Type = FieldType.Number, HelpText = "Maximum duration difference for title + duration matching. Defaults to 3000 ms.")]
     public int DurationToleranceMs { get; set; }
 
-    [FieldDefinition(1, Label = "Release types to check", Type = FieldType.Textbox, HelpText = "Comma-separated album types that should be checked as singles. Defaults to Single.")]
+    [FieldDefinition(1, Label = "Release types to compare", Type = FieldType.Textbox, HelpText = "Comma-separated release types used as comparison tracks for imported singles. Defaults to Album, EP.")]
     public string ReleaseTypesToCheck { get; set; }
 
-    [FieldDefinition(2, Label = "Title-only match action", Type = FieldType.Select, HelpText = "Safe behavior for Tier 3 title-only matches. Defaults to flag-only and never deletes.")]
+    [FieldDefinition(2, Label = "Title-only match action", Type = FieldType.Select, SelectOptions = typeof(Tier3Action), HelpText = "Safe behavior for Tier 3 title-only matches. Defaults to flag for review and never auto-deletes.")]
     public Tier3Action Tier3Action { get; set; }
 
     /// <summary>
     /// Converts settings to a validated SingleCleanupOptions snapshot.
-    /// The ReleaseTypesToCheck field specifies which album types are used for comparison tracks.
-    /// Malformed or empty values fall back to safe defaults (Album, EP).
+    /// The ReleaseTypesToCheck field persists which release types are used for comparison tracks.
+    /// Malformed or empty values fall back to the safe Album/EP baseline.
     /// </summary>
     public SingleCleanupOptions ToCleanupOptions()
     {
@@ -53,18 +59,47 @@ public class UniqueSinglesSettings : IProviderConfig
     {
         if (string.IsNullOrWhiteSpace(releaseTypesString))
         {
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" };
+            return CreateSafeDefaultReleaseTypes();
         }
 
         var types = releaseTypesString.Split(',')
-            .Select(t => t.Trim())
+            .Select(t => NormalizeReleaseType(t.Trim()))
             .Where(t => !string.IsNullOrWhiteSpace(t))
-            .Select(t => char.ToUpper(t[0]) + t.Substring(1).ToLower())
             .ToList();
 
         return types.Count > 0
             ? new HashSet<string>(types, StringComparer.OrdinalIgnoreCase)
-            : new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" };
+            : CreateSafeDefaultReleaseTypes();
+    }
+
+    private static HashSet<string> CreateSafeDefaultReleaseTypes()
+    {
+        return new HashSet<string>(SafeDefaultReleaseTypes, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeReleaseType(string releaseType)
+    {
+        if (string.IsNullOrWhiteSpace(releaseType))
+        {
+            return string.Empty;
+        }
+
+        if (releaseType.Equals("EP", StringComparison.OrdinalIgnoreCase))
+        {
+            return "EP";
+        }
+
+        if (releaseType.Equals("Album", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Album";
+        }
+
+        if (releaseType.Equals("Single", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Single";
+        }
+
+        return char.ToUpperInvariant(releaseType[0]) + releaseType[1..].ToLowerInvariant();
     }
 
     public NzbDroneValidationResult Validate()
