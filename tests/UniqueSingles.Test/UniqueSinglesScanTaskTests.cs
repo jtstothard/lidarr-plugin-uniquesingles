@@ -6,8 +6,10 @@ using NLog.Config;
 using NLog.Targets;
 using NzbDrone.Core.Messaging.Commands;
 using NzbDrone.Core.Music;
+using NzbDrone.Core.Notifications;
 using NzbDrone.Core.Plugins;
 using NzbDrone.Core.Plugins.Scheduling;
+using NzbDrone.Core.ThingiProvider;
 using Xunit;
 
 namespace UniqueSingles.Test;
@@ -58,7 +60,7 @@ public class UniqueSinglesScanTaskTests
         task.Execute(command);
 
         // Total: 18 candidates, 5 cleaned, 8 skipped, 1 review, 1 unmonitor failure, 1 delete failure
-        Assert.Contains("Scanned 2 artists: 5 cleaned, 8 skipped, 1 need review", command.ResultMessage);
+        Assert.Contains("2 artists scanned, 5 singles cleaned, 8 skipped, 1 flagged for review", command.ResultMessage);
     }
 
     [Fact]
@@ -83,7 +85,7 @@ public class UniqueSinglesScanTaskTests
         task.Execute(command);
 
         Assert.Contains("1 failed", command.ResultMessage);
-        Assert.Contains("3 cleaned", command.ResultMessage);
+        Assert.Contains("3 singles cleaned", command.ResultMessage);
         Assert.True(logger.HasMessageContaining("artist scan failed"));
     }
 
@@ -103,7 +105,7 @@ public class UniqueSinglesScanTaskTests
 
         task.Execute(command);
 
-        Assert.Contains("Scanned 0 artists", command.ResultMessage);
+        Assert.Contains("0 artists scanned", command.ResultMessage);
         Assert.Empty(cleanupService.ScannedArtists);
     }
 
@@ -129,7 +131,7 @@ public class UniqueSinglesScanTaskTests
 
         task.Execute(command);
 
-        Assert.Contains("Scanned 0 artists", command.ResultMessage);
+        Assert.Contains("0 artists scanned", command.ResultMessage);
     }
 
     // ── UniqueSinglesSettings validation ──────────────────────────────
@@ -173,7 +175,8 @@ public class UniqueSinglesScanTaskTests
         Logger? logger = null)
     {
         var log = logger ?? new TestLogger().Logger;
-        var task = new UniqueSinglesScanTask(cleanupService, artistService, log);
+        var notificationFactory = new StubNotificationFactory();
+        var task = new UniqueSinglesScanTask(cleanupService, artistService, notificationFactory, log);
         // Provider infrastructure sets Definition before use; replicate in tests
         task.Definition = new NzbDrone.Core.Extras.Metadata.MetadataDefinition
         {
@@ -277,5 +280,43 @@ public class UniqueSinglesScanTaskTests
             _factory.Flush();
             _factory.Dispose();
         }
+    }
+
+    private sealed class StubNotificationFactory : INotificationFactory
+    {
+        public List<NotificationDefinition> All() => new List<NotificationDefinition>();
+
+        // Unused INotificationFactory members — throw for safety
+        public List<INotification> GetAvailableProviders() => throw new NotImplementedException();
+        public bool Exists(int id) => throw new NotImplementedException();
+        public NotificationDefinition Find(int id) => throw new NotImplementedException();
+        public NotificationDefinition Get(int id) => throw new NotImplementedException();
+        public IEnumerable<NotificationDefinition> Get(IEnumerable<int> ids) => throw new NotImplementedException();
+        public NotificationDefinition Create(NotificationDefinition definition) => throw new NotImplementedException();
+        public void Update(NotificationDefinition definition) => throw new NotImplementedException();
+        public IEnumerable<NotificationDefinition> Update(IEnumerable<NotificationDefinition> definitions) => throw new NotImplementedException();
+        public void Delete(int id) => throw new NotImplementedException();
+        public void Delete(IEnumerable<int> ids) => throw new NotImplementedException();
+        public IEnumerable<NotificationDefinition> GetDefaultDefinitions() => throw new NotImplementedException();
+        public IEnumerable<NotificationDefinition> GetPresetDefinitions(NotificationDefinition providerDefinition) => throw new NotImplementedException();
+        public void SetProviderCharacteristics(NotificationDefinition definition) => throw new NotImplementedException();
+        public void SetProviderCharacteristics(INotification provider, NotificationDefinition definition) => throw new NotImplementedException();
+        public INotification GetInstance(NotificationDefinition definition) => throw new NotImplementedException();
+        public FluentValidation.Results.ValidationResult Test(NotificationDefinition definition) => throw new NotImplementedException();
+        public object RequestAction(NotificationDefinition definition, string action, IDictionary<string, string> query) => throw new NotImplementedException();
+        public List<NotificationDefinition> AllForTag(int tagId) => throw new NotImplementedException();
+        public List<INotification> OnGrabEnabled(bool filterBlockedNotifications = true) => throw new NotImplementedException();
+        public List<INotification> OnReleaseImportEnabled(bool filterBlockedNotifications = true) => throw new NotImplementedException();
+        public List<INotification> OnUpgradeEnabled(bool filterBlockedNotifications = true) => throw new NotImplementedException();
+        public List<INotification> OnRenameEnabled(bool filterBlockedNotifications = true) => throw new NotImplementedException();
+        public List<INotification> OnArtistAddEnabled(bool filterBlockedNotifications = true) => throw new NotImplementedException();
+        public List<INotification> OnArtistDeleteEnabled(bool filterBlockedNotifications = true) => throw new NotImplementedException();
+        public List<INotification> OnAlbumDeleteEnabled(bool filterBlockedNotifications = true) => throw new NotImplementedException();
+        public List<INotification> OnHealthIssueEnabled(bool filterBlockedNotifications = true) => throw new NotImplementedException();
+        public List<INotification> OnHealthRestoredEnabled(bool filterBlockedNotifications = true) => throw new NotImplementedException();
+        public List<INotification> OnDownloadFailureEnabled(bool filterBlockedNotifications = true) => throw new NotImplementedException();
+        public List<INotification> OnImportFailureEnabled(bool filterBlockedNotifications = true) => throw new NotImplementedException();
+        public List<INotification> OnTrackRetagEnabled(bool filterBlockedNotifications = true) => throw new NotImplementedException();
+        public List<INotification> OnApplicationUpdateEnabled(bool filterBlockedNotifications = true) => throw new NotImplementedException();
     }
 }

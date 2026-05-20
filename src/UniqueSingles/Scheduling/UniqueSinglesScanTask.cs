@@ -4,6 +4,7 @@ using System.Linq;
 using NLog;
 using NzbDrone.Core.Messaging.Commands;
 using NzbDrone.Core.Music;
+using NzbDrone.Core.Notifications;
 using NzbDrone.Core.Plugins.Scheduling;
 
 namespace NzbDrone.Core.Plugins
@@ -22,15 +23,63 @@ namespace NzbDrone.Core.Plugins
         private readonly ISingleCleanupService _cleanupService;
         private readonly IArtistService _artistService;
         private readonly Logger _logger;
+        private readonly INotificationFactory _notificationFactory;
 
         public UniqueSinglesScanTask(
             ISingleCleanupService cleanupService,
             IArtistService artistService,
+            INotificationFactory notificationFactory,
             Logger logger)
         {
             _cleanupService = cleanupService ?? throw new ArgumentNullException(nameof(cleanupService));
             _artistService = artistService ?? throw new ArgumentNullException(nameof(artistService));
+            _notificationFactory = notificationFactory ?? throw new ArgumentNullException(nameof(notificationFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
+
+        /// <summary>
+        /// Resolves cleanup options using notification settings (Settings > Connect) as the
+        /// source of truth. Falls back to metadata provider settings, then to hardcoded defaults.
+        /// </summary>
+        private SingleCleanupOptions ResolveCleanupOptions()
+        {
+            try
+            {
+                var allNotifications = _notificationFactory.All();
+                var matching = allNotifications
+                    .Where(d => d.Settings is UniqueSinglesSettings)
+                    .ToList();
+
+                if (matching.Count > 0)
+                {
+                    if (matching.Count > 1)
+                    {
+                        _logger.Warn(
+                            "UniqueSingles scan: multiple UniqueSingles notifications found ({0}), using first",
+                            matching.Count);
+                    }
+
+                    var settings = (UniqueSinglesSettings)matching[0].Settings;
+                    _logger.Info("UniqueSingles scan: using notification settings as source of truth");
+                    return settings.ToCleanupOptions();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn(ex, "UniqueSingles scan: failed to resolve notification settings, falling back");
+            }
+
+            if (Settings != null)
+            {
+                _logger.Info("UniqueSingles scan: using metadata provider settings (no notification found)");
+                return Settings.ToCleanupOptions();
+            }
+
+            _logger.Info("UniqueSingles scan: using default settings (no notification or metadata provider settings)");
+            return new SingleCleanupOptions(
+                3000,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" },
+                Tier3Action.FlagOnly);
         }
 
         public override string Name => "UniqueSingles Scan";
@@ -78,10 +127,7 @@ namespace NzbDrone.Core.Plugins
                 monitoredArtists.Count,
                 allArtists.Count - monitoredArtists.Count);
 
-            var options = Settings?.ToCleanupOptions() ?? new SingleCleanupOptions(
-                3000,
-                new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" },
-                Tier3Action.FlagOnly);
+            var options = ResolveCleanupOptions();
 
             foreach (var artist in monitoredArtists)
             {
@@ -124,7 +170,7 @@ namespace NzbDrone.Core.Plugins
                 aggregatedResult.DeleteFailures);
 
             command.ResultMessage = string.Format(
-                "Scanned {0} artists: {1} cleaned, {2} skipped, {3} need review{4}",
+                "{0} artists scanned, {1} singles cleaned, {2} skipped, {3} flagged for review{4}",
                 artistsScanned,
                 aggregatedResult.Cleaned,
                 aggregatedResult.Skipped,
