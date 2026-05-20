@@ -1,6 +1,9 @@
+using System.Linq;
+using System.Collections.Generic;
+using System;
 using NzbDrone.Core.Music;
 
-namespace UniqueSingles.Matching;
+namespace NzbDrone.Core.Plugins;
 
 /// <summary>
 /// Core matching engine that implements the 3-tier cascade matching strategy

@@ -1,7 +1,12 @@
+using System;
+using FluentValidation;
+using System.Linq;
+using System.Collections.Generic;
 using NzbDrone.Core.Annotations;
 using NzbDrone.Core.ThingiProvider;
+using NzbDrone.Core.Validation;
 
-namespace UniqueSingles;
+namespace NzbDrone.Core.Plugins;
 
 public enum Tier3Action
 {
@@ -15,6 +20,8 @@ public enum Tier3Action
 /// </summary>
 public class UniqueSinglesSettings : IProviderConfig
 {
+    private static readonly UniqueSinglesSettingsValidator Validator = new UniqueSinglesSettingsValidator();
+
     public UniqueSinglesSettings()
     {
         DurationToleranceMs = 3000;
@@ -22,13 +29,13 @@ public class UniqueSinglesSettings : IProviderConfig
         Tier3Action = Tier3Action.FlagOnly;
     }
 
-    [FieldDefinition(Order = 0, Label = "Duration tolerance (ms)", Type = FieldType.Number, HelpText = "Maximum duration difference for title + duration matching. Defaults to 3000 ms.")]
+    [FieldDefinition(0, Label = "Duration tolerance (ms)", Type = FieldType.Number, HelpText = "Maximum duration difference for title + duration matching. Defaults to 3000 ms.")]
     public int DurationToleranceMs { get; set; }
 
-    [FieldDefinition(Order = 1, Label = "Release types to check", Type = FieldType.Textbox, HelpText = "Comma-separated album types that should be checked as singles. Defaults to Single.")]
+    [FieldDefinition(1, Label = "Release types to check", Type = FieldType.Textbox, HelpText = "Comma-separated album types that should be checked as singles. Defaults to Single.")]
     public string ReleaseTypesToCheck { get; set; }
 
-    [FieldDefinition(Order = 2, Label = "Title-only match action", Type = FieldType.Select, HelpText = "Safe behavior for Tier 3 title-only matches. Defaults to flag-only and never deletes.")]
+    [FieldDefinition(2, Label = "Title-only match action", Type = FieldType.Select, HelpText = "Safe behavior for Tier 3 title-only matches. Defaults to flag-only and never deletes.")]
     public Tier3Action Tier3Action { get; set; }
 
     /// <summary>
@@ -58,5 +65,19 @@ public class UniqueSinglesSettings : IProviderConfig
         return types.Count > 0
             ? new HashSet<string>(types, StringComparer.OrdinalIgnoreCase)
             : new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" };
+    }
+
+    public NzbDroneValidationResult Validate()
+    {
+        return new NzbDroneValidationResult(Validator.Validate(this));
+    }
+}
+
+public class UniqueSinglesSettingsValidator : AbstractValidator<UniqueSinglesSettings>
+{
+    public UniqueSinglesSettingsValidator()
+    {
+        RuleFor(c => c.DurationToleranceMs).GreaterThan(0)
+            .WithMessage("Duration tolerance must be greater than 0");
     }
 }

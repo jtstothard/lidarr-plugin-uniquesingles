@@ -1,12 +1,13 @@
 using System.Reflection;
-using Xunit;
 using NzbDrone.Core.Messaging.Commands;
+using NzbDrone.Core.Plugins;
+using Xunit;
 
 namespace UniqueSingles.Test;
 
 /// <summary>
-/// Reflection-based smoke test to verify plugin assembly contains required types.
-/// Confirms the command and executor contract is satisfied without Lidarr runtime.
+/// Reflection-based smoke tests to verify the plugin assembly exports the core
+/// Lidarr integration contracts needed for discovery.
 /// </summary>
 public class AssemblySmokeTests
 {
@@ -15,7 +16,6 @@ public class AssemblySmokeTests
     {
         var assembly = typeof(UniqueSingles.Commands.UniqueSinglesScanCommand).Assembly;
 
-        // Find all types that inherit from Command
         var commandTypes = assembly.GetTypes()
             .Where(t => t.IsClass && !t.IsAbstract && typeof(Command).IsAssignableFrom(t))
             .ToList();
@@ -29,20 +29,18 @@ public class AssemblySmokeTests
     {
         var assembly = typeof(UniqueSingles.Commands.UniqueSinglesScanCommand).Assembly;
 
-        // Find the command type
         var commandType = assembly.GetTypes()
             .FirstOrDefault(t => t.Name == "UniqueSinglesScanCommand");
 
         Assert.NotNull(commandType);
 
-        // Find all types that implement IExecute<TCommand>
         var executeInterfaceType = typeof(IExecute<>);
         var executorTypes = assembly.GetTypes()
             .Where(t => t.IsClass && !t.IsAbstract)
             .Where(t => t.GetInterfaces()
                 .Any(i => i.IsGenericType &&
-                        i.GetGenericTypeDefinition() == executeInterfaceType &&
-                        i.GetGenericArguments()[0] == commandType))
+                          i.GetGenericTypeDefinition() == executeInterfaceType &&
+                          i.GetGenericArguments()[0] == commandType))
             .ToList();
 
         Assert.NotEmpty(executorTypes);
@@ -50,30 +48,21 @@ public class AssemblySmokeTests
     }
 
     [Fact]
-    public void Assembly_ContainsRequiredLidarrCompatTypes()
+    public void Assembly_ExportsConcretePluginRootWithExpectedMetadata()
     {
         var assembly = typeof(UniqueSingles.Commands.UniqueSinglesScanCommand).Assembly;
 
-        // Verify essential compatibility types exist
-        var requiredTypes = new[]
-        {
-            "Command",
-            "IExecute`1",
-            "CompletionStatus",
-            "IArtistService",
-            "IAlbumService",
-            "ITrackService",
-            "IMediaFileService",
-            "IDeleteMediaFiles",
-            "Logger",
-        };
+        var pluginRoots = assembly.GetExportedTypes()
+            .Where(t => t.IsClass && !t.IsAbstract && typeof(IPlugin).IsAssignableFrom(t))
+            .ToList();
 
-        foreach (var typeName in requiredTypes)
-        {
-            var found = assembly.GetTypes()
-                .Any(t => t.Name == typeName || t.Name == typeName.Replace("`1", ""));
+        var pluginType = Assert.Single(pluginRoots);
+        Assert.Equal(typeof(UniqueSinglesPlugin), pluginType);
 
-            Assert.True(found, $"Required type '{typeName}' not found in assembly");
-        }
+        var plugin = Assert.IsType<UniqueSinglesPlugin>(Activator.CreateInstance(pluginType));
+        Assert.Equal(UniqueSinglesPlugin.DisplayName, plugin.Name);
+        Assert.Equal(UniqueSinglesPlugin.RepositoryOwner, plugin.Owner);
+        Assert.Equal(UniqueSinglesPlugin.RepositoryUrl, plugin.GithubUrl);
+        Assert.Equal("Lidarr.Plugin.UniqueSingles", assembly.GetName().Name);
     }
 }

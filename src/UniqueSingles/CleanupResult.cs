@@ -1,4 +1,6 @@
-namespace UniqueSingles;
+using System;
+
+namespace NzbDrone.Core.Plugins;
 
 /// <summary>
 /// Summary statistics from a cleanup or scan operation.

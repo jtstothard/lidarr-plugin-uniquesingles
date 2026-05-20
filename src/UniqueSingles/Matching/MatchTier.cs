@@ -1,4 +1,4 @@
-namespace UniqueSingles.Matching;
+namespace NzbDrone.Core.Plugins;
 
 /// <summary>
 /// Represents the confidence tier of a track match.

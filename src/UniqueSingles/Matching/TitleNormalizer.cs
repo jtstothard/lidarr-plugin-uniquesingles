@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace UniqueSingles.Matching;
+namespace NzbDrone.Core.Plugins;
 
 /// <summary>
 /// Normalizes track titles for comparison purposes.

@@ -1,4 +1,7 @@
-namespace UniqueSingles;
+using System;
+
+using System.Collections.Generic;
+namespace NzbDrone.Core.Plugins;
 
 /// <summary>
 /// A validated, type-safe snapshot of Unique Singles settings used during cleanup operations.
@@ -40,7 +43,7 @@ public class SingleCleanupOptions
         // Ensure Tier 3 action is valid
         Tier3Action = Enum.IsDefined(typeof(Tier3Action), tier3Action)
             ? tier3Action
-            : UniqueSingles.Tier3Action.FlagOnly;
+            : Tier3Action.FlagOnly;
     }
 
     /// <summary>
@@ -54,6 +57,6 @@ public class SingleCleanupOptions
             return false;
         }
 
-        return ComparisonReleaseTypes.Contains(albumType, StringComparer.OrdinalIgnoreCase);
+        return ComparisonReleaseTypes.Contains(albumType);
     }
 }

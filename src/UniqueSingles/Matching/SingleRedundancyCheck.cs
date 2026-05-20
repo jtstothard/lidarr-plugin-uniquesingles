@@ -1,4 +1,6 @@
-namespace UniqueSingles.Matching;
+using System.Collections.Generic;
+
+namespace NzbDrone.Core.Plugins;
 
 /// <summary>
 /// Represents the redundancy check result for an entire single release.

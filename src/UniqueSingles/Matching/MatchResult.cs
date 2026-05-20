@@ -1,6 +1,6 @@
 using NzbDrone.Core.Music;
 
-namespace UniqueSingles.Matching;
+namespace NzbDrone.Core.Plugins;
 
 /// <summary>
 /// Represents the result of comparing a single's track against an album/EP track.

@@ -1,9 +1,13 @@
+using System.Linq;
+using System;
+using System.Collections.Generic;
+
 using NLog;
 using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.Music;
-using UniqueSingles.Matching;
+using NzbDrone.Core.Plugins;
 
-namespace UniqueSingles;
+namespace NzbDrone.Core.Plugins;
 
 /// <summary>
 /// Orchestrates safe single cleanup after Lidarr imports. It scopes all work to the imported artist,
