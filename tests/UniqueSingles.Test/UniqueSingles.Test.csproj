@@ -25,6 +25,8 @@
     <Compile Include="SingleCleanupOptionsTests.cs" />
     <Compile Include="UniqueSinglesImportCoordinatorTests.cs" />
     <Compile Include="UniqueSinglesNotificationTests.cs" />
+    <Compile Include="ScheduledTaskServiceTests.cs" />
+    <Compile Include="UniqueSinglesScanTaskTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
