@@ -152,6 +152,11 @@ public class UniqueSinglesProviderSchemaTests
         {
         }
 
+        public CleanupResult CleanupSingleSelfCheckWithOptions(NzbDrone.Core.Music.Artist artist, NzbDrone.Core.Music.Album importedSingle, SingleCleanupOptions options)
+        {
+            return CleanupResult.Empty;
+        }
+
         public CleanupResult CleanupWithOptions(NzbDrone.Core.Music.Artist artist, NzbDrone.Core.Music.Album importedAlbum, SingleCleanupOptions options)
         {
             return CleanupResult.Empty;

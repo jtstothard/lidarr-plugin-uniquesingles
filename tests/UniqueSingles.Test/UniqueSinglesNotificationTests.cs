@@ -238,6 +238,12 @@ public class UniqueSinglesNotificationTests
             }
         }
 
+        public CleanupResult CleanupSingleSelfCheckWithOptions(Artist artist, Album importedSingle, SingleCleanupOptions options)
+        {
+            CleanupSingleSelfCheck(artist, importedSingle);
+            return CleanupResult.Empty;
+        }
+
         public CleanupResult CleanupWithOptions(Artist artist, Album importedAlbum, SingleCleanupOptions options)
         {
             ArtistCleanupCalls++;

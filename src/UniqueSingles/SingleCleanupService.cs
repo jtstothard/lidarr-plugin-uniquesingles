@@ -17,6 +17,7 @@ public interface ISingleCleanupService
 {
     void CleanupSinglesForArtist(Artist artist, Album importedAlbum);
     void CleanupSingleSelfCheck(Artist artist, Album importedSingle);
+    CleanupResult CleanupSingleSelfCheckWithOptions(Artist artist, Album importedSingle, SingleCleanupOptions options);
     CleanupResult CleanupWithOptions(Artist artist, Album importedAlbum, SingleCleanupOptions options);
     CleanupResult ScanArtistWithOptions(Artist artist, SingleCleanupOptions options);
 }
@@ -92,6 +93,14 @@ public class SingleCleanupService : ISingleCleanupService
 
     public void CleanupSingleSelfCheck(Artist artist, Album importedSingle)
     {
+        CleanupSingleSelfCheckWithOptions(artist, importedSingle, CreateLegacyOptions());
+    }
+
+    /// <summary>
+    /// Self-checks an imported single using configured options and returns statistics.
+    /// </summary>
+    public CleanupResult CleanupSingleSelfCheckWithOptions(Artist artist, Album importedSingle, SingleCleanupOptions options)
+    {
         if (artist == null)
         {
             throw new ArgumentNullException(nameof(artist));
@@ -100,6 +109,11 @@ public class SingleCleanupService : ISingleCleanupService
         if (importedSingle == null)
         {
             throw new ArgumentNullException(nameof(importedSingle));
+        }
+
+        if (options == null)
+        {
+            throw new ArgumentNullException(nameof(options));
         }
 
         if (!IsSingle(importedSingle))
@@ -111,21 +125,25 @@ public class SingleCleanupService : ISingleCleanupService
                 importedSingle.Id,
                 importedSingle.Title,
                 importedSingle.AlbumType);
-            return;
+            return new CleanupResult(0, 0, 1, 0, 0, 0);
         }
 
         var albums = GetAlbumsForArtist(artist);
-        var albumTracks = GetDownloadedAlbumOrEpTracks(albums);
+        var comparisonAlbums = albums.Where(a => a.Id != importedSingle.Id).ToList();
+        var albumTracks = GetDownloadedAlbumOrEpTracks(comparisonAlbums, options);
 
         _logger.Info(
-            "UniqueSingles self-check start: artistId={0} artist='{1}' singleId={2} single='{3}' albumTrackCount={4}",
+            "UniqueSingles self-check start: artistId={0} artist='{1}' singleId={2} single='{3}' albumTrackCount={4} comparisonReleaseTypes='{5}' durationToleranceMs={6} tier3Action='{7}'",
             artist.Id,
             artist.Name,
             importedSingle.Id,
             importedSingle.Title,
-            albumTracks.Count);
+            albumTracks.Count,
+            string.Join(",", options.ComparisonReleaseTypes.OrderBy(t => t)),
+            options.DurationToleranceMs,
+            options.Tier3Action);
 
-        CheckAndCleanSingle(artist, importedSingle, null, albumTracks);
+        return CheckAndCleanSingleWithStats(artist, importedSingle, null, albumTracks, options);
     }
 
     /// <summary>
@@ -167,13 +185,16 @@ public class SingleCleanupService : ISingleCleanupService
             .ToList();
 
         _logger.Info(
-            "UniqueSingles cleanup start: artistId={0} artist='{1}' importedAlbumId={2} importedAlbum='{3}' albumTrackCount={4} candidateSingles={5}",
+            "UniqueSingles cleanup start: artistId={0} artist='{1}' importedAlbumId={2} importedAlbum='{3}' albumTrackCount={4} candidateSingles={5} comparisonReleaseTypes='{6}' durationToleranceMs={7} tier3Action='{8}'",
             artist.Id,
             artist.Name,
             importedAlbum.Id,
             importedAlbum.Title,
             albumTracks.Count,
-            candidateSingles.Count);
+            candidateSingles.Count,
+            string.Join(",", options.ComparisonReleaseTypes.OrderBy(t => t)),
+            options.DurationToleranceMs,
+            options.Tier3Action);
 
         var result = CleanupResult.Empty;
 
@@ -205,11 +226,14 @@ public class SingleCleanupService : ISingleCleanupService
         var candidateSingles = albums.Where(IsSingle).ToList();
 
         _logger.Info(
-            "UniqueSingles scan start: artistId={0} artist='{1}' albumTrackCount={2} candidateSingles={3}",
+            "UniqueSingles scan start: artistId={0} artist='{1}' albumTrackCount={2} candidateSingles={3} comparisonReleaseTypes='{4}' durationToleranceMs={5} tier3Action='{6}'",
             artist.Id,
             artist.Name,
             albumTracks.Count,
-            candidateSingles.Count);
+            candidateSingles.Count,
+            string.Join(",", options.ComparisonReleaseTypes.OrderBy(t => t)),
+            options.DurationToleranceMs,
+            options.Tier3Action);
 
         var result = CleanupResult.Empty;
 
@@ -276,11 +300,11 @@ public class SingleCleanupService : ISingleCleanupService
         }
 
         var check = TrackMatcher.CheckSingle(downloadedSingleTracks, albumTracks, options.DurationToleranceMs);
-        LogMatchDecision(artist, single, comparisonAlbumContext, check);
+        LogMatchDecision(artist, single, comparisonAlbumContext, check, options.Tier3Action);
 
         if (!check.IsRedundant)
         {
-            if (check.TrackResults.Any(r => r.Tier == MatchTier.Tier3_TitleOnly))
+            if (options.Tier3Action == Tier3Action.FlagOnly && check.TrackResults.Any(r => r.Tier == MatchTier.Tier3_TitleOnly))
             {
                 reviewNeeded = 1;
             }
@@ -412,16 +436,15 @@ public class SingleCleanupService : ISingleCleanupService
     private List<Track> GetDownloadedAlbumOrEpTracks(List<Album> albums)
     {
         // Legacy path for S01/S02 callers — uses default Album/EP filtering
-        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.FlagOnly);
-        return GetDownloadedAlbumOrEpTracks(albums, options);
+        return GetDownloadedAlbumOrEpTracks(albums, CreateLegacyOptions());
     }
 
-    private void LogMatchDecision(Artist artist, Album single, Album? comparisonAlbumContext, SingleRedundancyCheck check)
+    private void LogMatchDecision(Artist artist, Album single, Album? comparisonAlbumContext, SingleRedundancyCheck check, Tier3Action tier3Action = Tier3Action.FlagOnly)
     {
         var decision = check.IsRedundant ? "cleanup-approved" : "cleanup-skipped";
         foreach (var result in check.TrackResults)
         {
-            var isReview = result.Tier == MatchTier.Tier3_TitleOnly;
+            var isReview = result.Tier == MatchTier.Tier3_TitleOnly && tier3Action == Tier3Action.FlagOnly;
             _logger.Info(
                 "UniqueSingles {0}: artistId={1} artist='{2}' singleId={3} single='{4}' comparisonAlbumId={5} comparisonAlbum='{6}' track='{7}' matchedTrack='{8}' matchTier={9} confidence={10} reason='{11}' summary='{12}'",
                 isReview ? "review-needed" : decision,
@@ -554,6 +577,14 @@ public class SingleCleanupService : ISingleCleanupService
         }
 
         return allDeleted;
+    }
+
+    private static SingleCleanupOptions CreateLegacyOptions()
+    {
+        return new SingleCleanupOptions(
+            3000,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" },
+            Tier3Action.FlagOnly);
     }
 
     private static bool IsSingle(Album album)
