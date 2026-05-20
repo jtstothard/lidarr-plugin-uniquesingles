@@ -11,14 +11,12 @@ namespace NzbDrone.Core.Plugins;
 
 /// <summary>
 /// Lidarr Connection notification entry point for Unique Singles release-import handling.
-/// The notification is intentionally only a routing and exception-containment boundary;
-/// cleanup decisions are delegated to SingleCleanupService.
+/// The notification is intentionally only a settings-resolution, null-guard, and exception-containment boundary;
+/// import routing and aggregate cleanup logging are delegated to UniqueSinglesImportCoordinator.
 /// </summary>
 public class UniqueSinglesNotification : NotificationBase<UniqueSinglesSettings>
 {
-    private static readonly StringComparer AlbumTypeComparer = StringComparer.OrdinalIgnoreCase;
-
-    private readonly ISingleCleanupService _cleanupService;
+    private readonly IUniqueSinglesImportCoordinator _importCoordinator;
     private readonly Logger _logger;
 
     public UniqueSinglesNotification(
@@ -32,8 +30,13 @@ public class UniqueSinglesNotification : NotificationBase<UniqueSinglesSettings>
     }
 
     internal UniqueSinglesNotification(ISingleCleanupService cleanupService, Logger logger)
+        : this(new UniqueSinglesImportCoordinator(cleanupService, logger), logger)
     {
-        _cleanupService = cleanupService ?? throw new ArgumentNullException(nameof(cleanupService));
+    }
+
+    internal UniqueSinglesNotification(IUniqueSinglesImportCoordinator importCoordinator, Logger logger)
+    {
+        _importCoordinator = importCoordinator ?? throw new ArgumentNullException(nameof(importCoordinator));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -78,43 +81,17 @@ public class UniqueSinglesNotification : NotificationBase<UniqueSinglesSettings>
                 return;
             }
 
-            if (AlbumTypeComparer.Equals(album.AlbumType, "Album") || AlbumTypeComparer.Equals(album.AlbumType, "EP"))
-            {
-                _logger.Info(
-                    "UniqueSingles import route: album cleanup. artistId={0} artist='{1}' albumId={2} album='{3}' albumType='{4}'",
-                    artist.Id,
-                    artist.Name,
-                    album.Id,
-                    album.Title,
-                    album.AlbumType);
-                _cleanupService.CleanupSinglesForArtist(artist, album);
-                return;
-            }
-
-            if (AlbumTypeComparer.Equals(album.AlbumType, "Single"))
-            {
-                _logger.Info(
-                    "UniqueSingles import route: single self-check. artistId={0} artist='{1}' albumId={2} album='{3}' albumType='{4}'",
-                    artist.Id,
-                    artist.Name,
-                    album.Id,
-                    album.Title,
-                    album.AlbumType);
-                _cleanupService.CleanupSingleSelfCheck(artist, album);
-                return;
-            }
-
-            _logger.Info(
-                "UniqueSingles import no-op: unsupported release type. artistId={0} artist='{1}' albumId={2} album='{3}' albumType='{4}' reason=unsupported-import-type",
-                artist.Id,
-                artist.Name,
-                album.Id,
-                album.Title,
-                album.AlbumType);
+            _importCoordinator.HandleImport(message, ResolveCleanupOptions());
         }
         catch (Exception ex)
         {
             _logger.Warn(ex, "UniqueSingles import handler swallowed exception. reason=release-import-handler-failed");
         }
+    }
+
+    private SingleCleanupOptions ResolveCleanupOptions()
+    {
+        var settings = Definition?.Settings as UniqueSinglesSettings ?? new UniqueSinglesSettings();
+        return settings.ToCleanupOptions();
     }
 }
