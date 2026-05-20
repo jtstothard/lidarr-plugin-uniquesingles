@@ -13,68 +13,114 @@ namespace UniqueSingles.Test;
 
 public class UniqueSinglesImportCoordinatorTests
 {
-    [Theory]
-    [InlineData("Album")]
-    [InlineData("album")]
-    [InlineData("EP")]
-    [InlineData("ep")]
-    public void HandleImport_AlbumOrEp_RoutesToArtistCleanupWithSummaryLogging(string albumType)
+    public static IEnumerable<object[]> SupportedImportCases()
     {
-        using var loggerHarness = new LoggerHarness();
-        var cleanup = new RecordingCleanupService
+        yield return new object[]
         {
-            ArtistCleanupResult = new CleanupResult(4, 2, 1, 0, 0, 1),
+            "Album",
+            "artist-cleanup",
+            1,
+            0,
+            new CleanupResult(4, 2, 1, 0, 0, 1),
+            4500,
+            new[] { "Album", "Single" },
+            Tier3Action.Skip,
         };
-        var coordinator = new UniqueSinglesImportCoordinator(cleanup, loggerHarness.Logger);
-        var options = new SingleCleanupOptions(4500, new HashSet<string> { "Album", "Single" }, Tier3Action.Skip);
-        var artist = new Artist { Id = 10, Name = "Artist" };
-        var album = new Album { Id = 20, Title = "Release", AlbumType = albumType };
 
-        var result = coordinator.HandleImport(Message(artist, album), options);
+        yield return new object[]
+        {
+            "EP",
+            "artist-cleanup",
+            1,
+            0,
+            new CleanupResult(3, 0, 2, 1, 0, 0),
+            4100,
+            new[] { "Album", "EP" },
+            Tier3Action.FlagOnly,
+        };
 
-        Assert.Equal(1, cleanup.ArtistCleanupCalls);
-        Assert.Equal(0, cleanup.SingleSelfCheckCalls);
-        Assert.Same(artist, cleanup.LastArtist);
-        Assert.Same(album, cleanup.LastAlbum);
-        Assert.Same(options, cleanup.LastOptions);
-        Assert.Equal(4, result.CandidatesChecked);
-        Assert.Equal(2, result.Cleaned);
-        Assert.Equal(1, result.Skipped);
-        Assert.Equal(1, result.DeleteFailures);
-        Assert.Contains(loggerHarness.Entries, entry => entry.Contains("UniqueSingles import route:", StringComparison.Ordinal) && entry.Contains("route=artist-cleanup", StringComparison.Ordinal));
-        Assert.Contains(loggerHarness.Entries, entry => entry.Contains("comparisonReleaseTypes='Album,Single'", StringComparison.Ordinal));
-        Assert.Contains(loggerHarness.Entries, entry => entry.Contains("durationToleranceMs=4500", StringComparison.Ordinal));
-        Assert.Contains(loggerHarness.Entries, entry => entry.Contains("tier3Action='Skip'", StringComparison.Ordinal));
-        Assert.Contains(loggerHarness.Entries, entry => entry.Contains("UniqueSingles import result:", StringComparison.Ordinal) && entry.Contains("candidatesChecked=4", StringComparison.Ordinal) && entry.Contains("cleaned=2", StringComparison.Ordinal) && entry.Contains("deleteFailures=1", StringComparison.Ordinal));
+        yield return new object[]
+        {
+            "Single",
+            "single-self-check",
+            0,
+            1,
+            new CleanupResult(1, 1, 0, 0, 0, 0),
+            3200,
+            new[] { "Album", "EP" },
+            Tier3Action.Skip,
+        };
+
+        yield return new object[]
+        {
+            "single",
+            "single-self-check",
+            0,
+            1,
+            new CleanupResult(1, 0, 1, 1, 0, 0),
+            3200,
+            new[] { "Album", "EP" },
+            Tier3Action.FlagOnly,
+        };
     }
 
     [Theory]
-    [InlineData("Single")]
-    [InlineData("single")]
-    public void HandleImport_Single_RoutesToSingleSelfCheckWithSummaryLogging(string albumType)
+    [MemberData(nameof(SupportedImportCases))]
+    public void HandleImport_SupportedRoutes_LogDeterministicAggregateCleanupOutcomes(
+        string albumType,
+        string expectedRoute,
+        int expectedArtistCleanupCalls,
+        int expectedSingleSelfCheckCalls,
+        CleanupResult expectedResult,
+        int durationToleranceMs,
+        string[] comparisonReleaseTypes,
+        Tier3Action tier3Action)
     {
         using var loggerHarness = new LoggerHarness();
         var cleanup = new RecordingCleanupService
         {
-            SingleSelfCheckResult = new CleanupResult(1, 0, 1, 1, 0, 0),
+            ArtistCleanupResult = expectedRoute == "artist-cleanup" ? expectedResult : CleanupResult.Empty,
+            SingleSelfCheckResult = expectedRoute == "single-self-check" ? expectedResult : CleanupResult.Empty,
         };
         var coordinator = new UniqueSinglesImportCoordinator(cleanup, loggerHarness.Logger);
-        var options = new SingleCleanupOptions(3200, new HashSet<string> { "Album", "EP" }, Tier3Action.FlagOnly);
+        var options = new SingleCleanupOptions(durationToleranceMs, new HashSet<string>(comparisonReleaseTypes), tier3Action);
         var artist = new Artist { Id = 10, Name = "Artist" };
         var album = new Album { Id = 20, Title = "Release", AlbumType = albumType };
 
         var result = coordinator.HandleImport(Message(artist, album), options);
 
-        Assert.Equal(0, cleanup.ArtistCleanupCalls);
-        Assert.Equal(1, cleanup.SingleSelfCheckCalls);
+        Assert.Equal(expectedArtistCleanupCalls, cleanup.ArtistCleanupCalls);
+        Assert.Equal(expectedSingleSelfCheckCalls, cleanup.SingleSelfCheckCalls);
         Assert.Same(artist, cleanup.LastArtist);
         Assert.Same(album, cleanup.LastAlbum);
         Assert.Same(options, cleanup.LastOptions);
-        Assert.Equal(1, result.CandidatesChecked);
-        Assert.Equal(1, result.Skipped);
-        Assert.Equal(1, result.ReviewNeeded);
-        Assert.Contains(loggerHarness.Entries, entry => entry.Contains("route=single-self-check", StringComparison.Ordinal));
-        Assert.Contains(loggerHarness.Entries, entry => entry.Contains("reviewNeeded=1", StringComparison.Ordinal));
+
+        Assert.Equal(expectedResult.CandidatesChecked, result.CandidatesChecked);
+        Assert.Equal(expectedResult.Cleaned, result.Cleaned);
+        Assert.Equal(expectedResult.Skipped, result.Skipped);
+        Assert.Equal(expectedResult.ReviewNeeded, result.ReviewNeeded);
+        Assert.Equal(expectedResult.UnmonitorFailures, result.UnmonitorFailures);
+        Assert.Equal(expectedResult.DeleteFailures, result.DeleteFailures);
+
+        var routeEntry = Assert.Single(loggerHarness.Entries.Where(entry =>
+            entry.Contains("UniqueSingles import route:", StringComparison.Ordinal) &&
+            entry.Contains($"route={expectedRoute}", StringComparison.Ordinal)));
+        var resultEntry = Assert.Single(loggerHarness.Entries.Where(entry =>
+            entry.Contains("UniqueSingles import result:", StringComparison.Ordinal) &&
+            entry.Contains($"route={expectedRoute}", StringComparison.Ordinal)));
+
+        Assert.Contains($"albumType='{albumType}'", routeEntry, StringComparison.Ordinal);
+        Assert.Contains($"comparisonReleaseTypes='{FormatComparisonReleaseTypes(comparisonReleaseTypes)}'", routeEntry, StringComparison.Ordinal);
+        Assert.Contains($"durationToleranceMs={durationToleranceMs}", routeEntry, StringComparison.Ordinal);
+        Assert.Contains($"tier3Action='{tier3Action}'", routeEntry, StringComparison.Ordinal);
+
+        Assert.Contains($"albumType='{albumType}'", resultEntry, StringComparison.Ordinal);
+        Assert.Contains($"candidatesChecked={expectedResult.CandidatesChecked}", resultEntry, StringComparison.Ordinal);
+        Assert.Contains($"cleaned={expectedResult.Cleaned}", resultEntry, StringComparison.Ordinal);
+        Assert.Contains($"skipped={expectedResult.Skipped}", resultEntry, StringComparison.Ordinal);
+        Assert.Contains($"reviewNeeded={expectedResult.ReviewNeeded}", resultEntry, StringComparison.Ordinal);
+        Assert.Contains($"unmonitorFailures={expectedResult.UnmonitorFailures}", resultEntry, StringComparison.Ordinal);
+        Assert.Contains($"deleteFailures={expectedResult.DeleteFailures}", resultEntry, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -101,6 +147,11 @@ public class UniqueSinglesImportCoordinatorTests
         Assert.Contains(loggerHarness.Entries, entry => entry.Contains("unsupported-import-type", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(loggerHarness.Entries, entry => entry.Contains("route=no-op", StringComparison.Ordinal));
         Assert.Contains(loggerHarness.Entries, entry => entry.Contains("candidatesChecked=0", StringComparison.Ordinal) && entry.Contains("cleaned=0", StringComparison.Ordinal) && entry.Contains("skipped=0", StringComparison.Ordinal));
+    }
+
+    private static string FormatComparisonReleaseTypes(IEnumerable<string> comparisonReleaseTypes)
+    {
+        return string.Join(",", comparisonReleaseTypes.OrderBy(type => type, StringComparer.OrdinalIgnoreCase));
     }
 
     private static AlbumDownloadMessage Message(Artist artist, Album album)

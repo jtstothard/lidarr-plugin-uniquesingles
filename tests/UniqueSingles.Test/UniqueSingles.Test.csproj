@@ -24,6 +24,7 @@
     <Compile Include="Matching/TrackMatcherTests.cs" />
     <Compile Include="SingleCleanupOptionsTests.cs" />
     <Compile Include="UniqueSinglesImportCoordinatorTests.cs" />
+    <Compile Include="UniqueSinglesNotificationTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
