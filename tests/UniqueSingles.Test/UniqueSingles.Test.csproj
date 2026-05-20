@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <!-- Allow running on .NET 10 SDK when .NET 8 runtime is not installed -->
     <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
@@ -16,6 +17,10 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="PluginIdentitySmokeTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
