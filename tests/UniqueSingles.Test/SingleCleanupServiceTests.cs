@@ -1,6 +1,9 @@
 using NLog;
+using NLog.Config;
+using NLog.Targets;
 using NzbDrone.Core.MediaFiles;
 using NzbDrone.Core.Music;
+using NzbDrone.Core.Plugins;
 using Xunit;
 
 namespace UniqueSingles.Test;
@@ -589,7 +592,8 @@ public class SingleCleanupServiceTests
         RecordingDeleteMediaFiles deleteMediaFiles,
         RecordingLogger? logger = null)
     {
-        return new SingleCleanupService(albumService, trackService, mediaFileService, deleteMediaFiles, logger ?? new RecordingLogger());
+        var loggerHarness = logger ?? new RecordingLogger();
+        return new SingleCleanupService(albumService, trackService, mediaFileService, deleteMediaFiles, loggerHarness.Logger);
     }
 
     private static Artist Artist() => new() { Id = 42, Name = "Test Artist" };
@@ -619,6 +623,10 @@ public class SingleCleanupServiceTests
         Path = path,
     };
 
+    private static T NotUsed<T>() => throw new NotSupportedException("Not used in focused cleanup tests.");
+
+    private static void NotUsed() => throw new NotSupportedException("Not used in focused cleanup tests.");
+
     private sealed class RecordingAlbumService : IAlbumService
     {
         private readonly List<Album> _albums;
@@ -633,23 +641,47 @@ public class SingleCleanupServiceTests
         public List<int> AllLibraryLookupCalls { get; } = new();
         public List<(int AlbumId, bool Monitored)> SetMonitoredCalls { get; } = new();
 
-        public List<Album> GetAlbumsByArtist(int artistId)
-        {
-            ArtistAlbumLookupIds.Add(artistId);
-            return _albums;
-        }
-
         public Album GetAlbum(int albumId)
         {
             AllLibraryLookupCalls.Add(albumId);
             return _albums.Single(a => a.Id == albumId);
         }
 
-        public List<Album> GetArtistAlbumsWithFiles(Artist artist)
+        public List<Album> GetAlbums(IEnumerable<int> albumIds)
         {
-            AllLibraryLookupCalls.Add(artist.Id);
+            var ids = albumIds.ToHashSet();
+            return _albums.Where(a => ids.Contains(a.Id)).ToList();
+        }
+
+        public List<Album> GetAlbumsByArtist(int artistId)
+        {
+            ArtistAlbumLookupIds.Add(artistId);
             return _albums;
         }
+
+        public List<Album> GetNextAlbumsByArtistMetadataId(IEnumerable<int> artistMetadataIds) => NotUsed<List<Album>>();
+
+        public List<Album> GetLastAlbumsByArtistMetadataId(IEnumerable<int> artistMetadataIds) => NotUsed<List<Album>>();
+
+        public List<Album> GetAlbumsByArtistMetadataId(int artistMetadataId) => NotUsed<List<Album>>();
+
+        public List<Album> GetAlbumsForRefresh(int artistMetadataId, List<string> foreignIds) => NotUsed<List<Album>>();
+
+        public Album AddAlbum(Album newAlbum, bool doRefresh) => NotUsed<Album>();
+
+        public Album FindById(string foreignId) => NotUsed<Album>();
+
+        public Album FindByTitle(int artistMetadataId, string title) => NotUsed<Album>();
+
+        public Album FindByTitleInexact(int artistMetadataId, string title) => NotUsed<Album>();
+
+        public List<Album> GetCandidates(int artistMetadataId, string title) => NotUsed<List<Album>>();
+
+        public void DeleteAlbum(int albumId, bool deleteFiles, bool addImportListExclusion = false) => NotUsed();
+
+        public List<Album> GetAllAlbums() => _albums.ToList();
+
+        public Album UpdateAlbum(Album album) => NotUsed<Album>();
 
         public void SetAlbumMonitored(int albumId, bool monitored)
         {
@@ -658,6 +690,40 @@ public class SingleCleanupServiceTests
             {
                 throw new InvalidOperationException("unmonitor failed");
             }
+        }
+
+        public void SetMonitored(IEnumerable<int> ids, bool monitored)
+        {
+            foreach (var id in ids)
+            {
+                SetAlbumMonitored(id, monitored);
+            }
+        }
+
+        public void UpdateLastSearchTime(List<Album> albums) => NotUsed();
+
+        public NzbDrone.Core.Datastore.PagingSpec<Album> AlbumsWithoutFiles(NzbDrone.Core.Datastore.PagingSpec<Album> pagingSpec) => NotUsed<NzbDrone.Core.Datastore.PagingSpec<Album>>();
+
+        public List<Album> AlbumsBetweenDates(DateTime start, DateTime end, bool includeUnmonitored) => NotUsed<List<Album>>();
+
+        public List<Album> ArtistAlbumsBetweenDates(Artist artist, DateTime start, DateTime end, bool includeUnmonitored) => NotUsed<List<Album>>();
+
+        public void InsertMany(List<Album> albums) => _albums.AddRange(albums);
+
+        public void UpdateMany(List<Album> albums) => NotUsed();
+
+        public void DeleteMany(List<Album> albums) => NotUsed();
+
+        public void SetAddOptions(IEnumerable<Album> albums) => NotUsed();
+
+        public Album FindAlbumByRelease(string albumReleaseId) => NotUsed<Album>();
+
+        public Album FindAlbumByTrackId(int trackId) => NotUsed<Album>();
+
+        public List<Album> GetArtistAlbumsWithFiles(Artist artist)
+        {
+            AllLibraryLookupCalls.Add(artist.Id);
+            return _albums;
         }
     }
 
@@ -674,17 +740,49 @@ public class SingleCleanupServiceTests
             return this;
         }
 
-        public List<Track> GetTracksByAlbum(int albumId)
-        {
-            AlbumLookupIds.Add(albumId);
-            return _tracksByAlbum.TryGetValue(albumId, out var tracks) ? tracks : new List<Track>();
-        }
+        public Track GetTrack(int id) => NotUsed<Track>();
+
+        public List<Track> GetTracks(IEnumerable<int> ids) => NotUsed<List<Track>>();
 
         public List<Track> GetTracksByArtist(int artistId)
         {
             ArtistLookupIds.Add(artistId);
             return _tracksByAlbum.Values.SelectMany(t => t).ToList();
         }
+
+        public List<Track> GetTracksByAlbum(int albumId)
+        {
+            AlbumLookupIds.Add(albumId);
+            return _tracksByAlbum.TryGetValue(albumId, out var tracks) ? tracks : new List<Track>();
+        }
+
+        public List<Track> GetTracksByRelease(int albumReleaseId) => NotUsed<List<Track>>();
+
+        public List<Track> GetTracksByReleases(List<int> albumReleaseIds) => NotUsed<List<Track>>();
+
+        public List<Track> GetTracksForRefresh(int albumReleaseId, List<string> foreignTrackIds) => NotUsed<List<Track>>();
+
+        public List<Track> TracksWithFiles(int artistId) => _tracksByAlbum.Values.SelectMany(t => t).Where(t => t.HasFile).ToList();
+
+        public List<Track> TracksWithoutFiles(int albumId) => GetTracksByAlbum(albumId).Where(t => !t.HasFile).ToList();
+
+        public List<Track> GetTracksByFileId(int trackFileId) => _tracksByAlbum.Values.SelectMany(t => t).Where(t => t.TrackFileId == trackFileId).ToList();
+
+        public List<Track> GetTracksByFileId(IEnumerable<int> trackFileIds)
+        {
+            var ids = trackFileIds.ToHashSet();
+            return _tracksByAlbum.Values.SelectMany(t => t).Where(t => ids.Contains(t.TrackFileId)).ToList();
+        }
+
+        public void UpdateTrack(Track track) => NotUsed();
+
+        public void InsertMany(List<Track> tracks) => NotUsed();
+
+        public void UpdateMany(List<Track> tracks) => NotUsed();
+
+        public void DeleteMany(List<Track> tracks) => NotUsed();
+
+        public void SetFileIds(List<Track> tracks) => NotUsed();
     }
 
     private sealed class RecordingMediaFileService : IMediaFileService
@@ -699,16 +797,84 @@ public class SingleCleanupServiceTests
             return this;
         }
 
-        public TrackFile Get(int id)
+        public TrackFile Add(TrackFile trackFile)
         {
-            return _filesByAlbum.Values.SelectMany(f => f).Single(f => f.Id == id);
+            WithFiles(trackFile.AlbumId, GetFilesByAlbum(trackFile.AlbumId).Append(trackFile).ToArray());
+            return trackFile;
         }
+
+        public void AddMany(List<TrackFile> trackFiles)
+        {
+            foreach (var trackFile in trackFiles)
+            {
+                Add(trackFile);
+            }
+        }
+
+        public void Update(TrackFile trackFile) => NotUsed();
+
+        public void Update(List<TrackFile> trackFile) => NotUsed();
+
+        public void Delete(TrackFile trackFile, DeleteMediaFileReason reason)
+        {
+            if (_filesByAlbum.TryGetValue(trackFile.AlbumId, out var files))
+            {
+                files.RemoveAll(f => f.Id == trackFile.Id);
+            }
+        }
+
+        public void DeleteMany(List<TrackFile> trackFiles, DeleteMediaFileReason reason)
+        {
+            foreach (var trackFile in trackFiles)
+            {
+                Delete(trackFile, reason);
+            }
+        }
+
+        public List<TrackFile> GetFilesByArtist(int artistId) => NotUsed<List<TrackFile>>();
 
         public List<TrackFile> GetFilesByAlbum(int albumId)
         {
             AlbumLookupIds.Add(albumId);
             return _filesByAlbum.TryGetValue(albumId, out var files) ? files : new List<TrackFile>();
         }
+
+        public List<TrackFile> GetFilesByRelease(int releaseId) => NotUsed<List<TrackFile>>();
+
+        public List<TrackFile> GetUnmappedFiles() => new();
+
+        public List<System.IO.Abstractions.IFileInfo> FilterUnchangedFiles(List<System.IO.Abstractions.IFileInfo> files, FilterFilesType filter) => files;
+
+        public TrackFile Get(int id)
+        {
+            return _filesByAlbum.Values.SelectMany(f => f).Single(f => f.Id == id);
+        }
+
+        public List<TrackFile> Get(IEnumerable<int> ids)
+        {
+            var requested = ids.ToHashSet();
+            return _filesByAlbum.Values.SelectMany(f => f).Where(f => requested.Contains(f.Id)).ToList();
+        }
+
+        public List<TrackFile> GetFilesWithBasePath(string path)
+        {
+            return _filesByAlbum.Values.SelectMany(f => f)
+                .Where(f => f.Path.StartsWith(path, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        public List<TrackFile> GetFileWithPath(List<string> path)
+        {
+            var requested = path.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return _filesByAlbum.Values.SelectMany(f => f).Where(f => requested.Contains(f.Path)).ToList();
+        }
+
+        public TrackFile GetFileWithPath(string path)
+        {
+            return _filesByAlbum.Values.SelectMany(f => f).Single(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public void UpdateMediaInfo(List<TrackFile> trackFiles) => NotUsed();
     }
 
     private sealed class RecordingDeleteMediaFiles : IDeleteMediaFiles
@@ -724,26 +890,48 @@ public class SingleCleanupServiceTests
                 throw new InvalidOperationException("delete failed");
             }
         }
+
+        public void DeleteTrackFile(TrackFile trackFile, string subfolder = "") => NotUsed();
     }
 
-    private sealed class RecordingLogger : Logger
+    private sealed class RecordingLogger : IDisposable
     {
-        public List<string> InfoMessages { get; } = new();
-        public List<string> WarnMessages { get; } = new();
+        private readonly LogFactory _factory;
+        private readonly MemoryTarget _target;
 
-        public override void Info(string message, params object?[] args)
+        public RecordingLogger()
         {
-            InfoMessages.Add(WithArgs(message, args));
+            _factory = new LogFactory();
+            _target = new MemoryTarget
+            {
+                Layout = "${level}|${message}|${exception:format=Type,Message}",
+            };
+
+            var config = new LoggingConfiguration();
+            config.AddRuleForAllLevels(_target);
+            _factory.Configuration = config;
+            Logger = _factory.GetLogger(Guid.NewGuid().ToString("N"));
         }
 
-        public override void Warn(Exception exception, string message, params object?[] args)
+        public Logger Logger { get; }
+
+        public List<string> InfoMessages => Entries.Where(entry => entry.StartsWith("Info|", StringComparison.Ordinal)).ToList();
+
+        public List<string> WarnMessages => Entries.Where(entry => entry.StartsWith("Warn|", StringComparison.Ordinal)).ToList();
+
+        private IList<string> Entries
         {
-            WarnMessages.Add(WithArgs(message, args));
+            get
+            {
+                _factory.Flush();
+                return _target.Logs;
+            }
         }
 
-        private static string WithArgs(string message, object?[] args)
+        public void Dispose()
         {
-            return args.Length == 0 ? message : $"{message} {string.Join(" ", args.Select(a => a?.ToString()))}";
+            _factory.Flush();
+            _factory.Dispose();
         }
     }
 }

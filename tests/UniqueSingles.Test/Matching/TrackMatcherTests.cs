@@ -1,5 +1,5 @@
 using NzbDrone.Core.Music;
-using UniqueSingles.Matching;
+using NzbDrone.Core.Plugins;
 using Xunit;
 
 namespace UniqueSingles.Test.Matching;

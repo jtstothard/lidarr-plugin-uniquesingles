@@ -20,11 +20,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="PluginIdentitySmokeTests.cs" />
+    <Compile Include="SingleCleanupServiceTests.cs" />
+    <Compile Include="Matching/TrackMatcherTests.cs" />
+    <Compile Include="SingleCleanupOptionsTests.cs" />
     <Compile Include="UniqueSinglesImportCoordinatorTests.cs" />
-    <Compile Include="UniqueSinglesNotificationTests.cs" />
-    <Compile Include="UniqueSinglesProviderSchemaTests.cs" />
-    <Compile Include="UniqueSinglesSettingsSchemaTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

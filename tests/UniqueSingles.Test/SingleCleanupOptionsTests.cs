@@ -1,3 +1,4 @@
+using NzbDrone.Core.Plugins;
 using Xunit;
 
 namespace UniqueSingles.Test;
@@ -12,8 +13,8 @@ public class SingleCleanupOptionsTests
 
         Assert.Equal(5000, options.DurationToleranceMs);
         Assert.Equal(2, options.ComparisonReleaseTypes.Count);
-        Assert.True(options.ComparisonReleaseTypes.Contains("Album"));
-        Assert.True(options.ComparisonReleaseTypes.Contains("EP"));
+        Assert.Contains("Album", options.ComparisonReleaseTypes);
+        Assert.Contains("EP", options.ComparisonReleaseTypes);
         Assert.Equal(Tier3Action.FlagOnly, options.Tier3Action);
     }
 
@@ -48,11 +49,11 @@ public class SingleCleanupOptionsTests
     [Fact]
     public void Constructor_NullReleaseTypes_FallsBackToAlbumEp()
     {
-        var options = new SingleCleanupOptions(5000, null, Tier3Action.FlagOnly);
+        var options = new SingleCleanupOptions(5000, null!, Tier3Action.FlagOnly);
 
         Assert.Equal(2, options.ComparisonReleaseTypes.Count);
-        Assert.True(options.ComparisonReleaseTypes.Contains("Album"));
-        Assert.True(options.ComparisonReleaseTypes.Contains("EP"));
+        Assert.Contains("Album", options.ComparisonReleaseTypes);
+        Assert.Contains("EP", options.ComparisonReleaseTypes);
     }
 
     [Fact]
@@ -61,8 +62,8 @@ public class SingleCleanupOptionsTests
         var options = new SingleCleanupOptions(5000, new HashSet<string>(), Tier3Action.FlagOnly);
 
         Assert.Equal(2, options.ComparisonReleaseTypes.Count);
-        Assert.True(options.ComparisonReleaseTypes.Contains("Album"));
-        Assert.True(options.ComparisonReleaseTypes.Contains("EP"));
+        Assert.Contains("Album", options.ComparisonReleaseTypes);
+        Assert.Contains("EP", options.ComparisonReleaseTypes);
     }
 
     [Fact]
@@ -73,8 +74,8 @@ public class SingleCleanupOptionsTests
 
         Assert.True(options.ShouldCompareAgainstType("Album"));
         Assert.True(options.ShouldCompareAgainstType("EP"));
-        Assert.True(options.ShouldCompareAgainstType("album")); // Case-insensitive
-        Assert.True(options.ShouldCompareAgainstType("ALBUM")); // Case-insensitive
+        Assert.True(options.ShouldCompareAgainstType("album"));
+        Assert.True(options.ShouldCompareAgainstType("ALBUM"));
     }
 
     [Fact]
@@ -94,7 +95,7 @@ public class SingleCleanupOptionsTests
         var releaseTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" };
         var options = new SingleCleanupOptions(5000, releaseTypes, Tier3Action.FlagOnly);
 
-        Assert.False(options.ShouldCompareAgainstType(null));
+        Assert.False(options.ShouldCompareAgainstType(null!));
         Assert.False(options.ShouldCompareAgainstType(""));
         Assert.False(options.ShouldCompareAgainstType("   "));
     }
