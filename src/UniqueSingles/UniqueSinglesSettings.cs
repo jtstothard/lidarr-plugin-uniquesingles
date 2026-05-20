@@ -33,6 +33,7 @@ public class UniqueSinglesSettings : IProviderConfig
         DurationToleranceMs = 3000;
         ReleaseTypesToCheck = DefaultReleaseTypesToCheck;
         Tier3Action = Tier3Action.FlagOnly;
+        ScanIntervalMinutes = 1440;
     }
 
     [FieldDefinition(0, Label = "Duration tolerance (ms)", Type = FieldType.Number, HelpText = "Maximum duration difference for title + duration matching. Defaults to 3000 ms.")]
@@ -43,6 +44,9 @@ public class UniqueSinglesSettings : IProviderConfig
 
     [FieldDefinition(2, Label = "Title-only match action", Type = FieldType.Select, SelectOptions = typeof(Tier3Action), HelpText = "Safe behavior for Tier 3 title-only matches. Defaults to flag for review and never auto-deletes.")]
     public Tier3Action Tier3Action { get; set; }
+
+    [FieldDefinition(3, Label = "Scan interval (minutes)", Type = FieldType.Number, HelpText = "How often to run automatic scan. Minimum 60 minutes. Defaults to 1440 (24 hours).")]
+    public int ScanIntervalMinutes { get; set; }
 
     /// <summary>
     /// Converts settings to a validated SingleCleanupOptions snapshot.
@@ -114,5 +118,7 @@ public class UniqueSinglesSettingsValidator : AbstractValidator<UniqueSinglesSet
     {
         RuleFor(c => c.DurationToleranceMs).GreaterThan(0)
             .WithMessage("Duration tolerance must be greater than 0");
+        RuleFor(c => c.ScanIntervalMinutes).GreaterThanOrEqualTo(60)
+            .WithMessage("Scan interval must be at least 60 minutes");
     }
 }
