@@ -304,12 +304,28 @@ public class SingleCleanupService : ISingleCleanupService
 
         if (!check.IsRedundant)
         {
-            if (options.Tier3Action == Tier3Action.FlagOnly && check.TrackResults.Any(r => r.Tier == MatchTier.Tier3_TitleOnly))
+            // AutoClean: if all tracks matched (none are NoMatch), treat as redundant and proceed to cleanup
+            if (options.Tier3Action == Tier3Action.AutoClean && check.TrackResults.All(r => r.Tier != MatchTier.NoMatch))
             {
-                reviewNeeded = 1;
+                _logger.Info(
+                    "UniqueSingles auto-clean: Tier-3 match approved for cleanup. artistId={0} artist='{1}' singleId={2} single='{3}' trackTiers='{4}'",
+                    artist.Id,
+                    artist.Name,
+                    single.Id,
+                    single.Title,
+                    string.Join(",", check.TrackResults.Select(r => r.Tier)));
+                // Fall through to unmonitor+delete path below
             }
-            skipped = 1;
-            return new CleanupResult(candidatesChecked, cleaned, skipped, reviewNeeded, unmonitorFailures, deleteFailures);
+            else
+            {
+                if (options.Tier3Action == Tier3Action.FlagOnly && check.TrackResults.Any(r => r.Tier == MatchTier.Tier3_TitleOnly))
+                {
+                    reviewNeeded = 1;
+                }
+
+                skipped = 1;
+                return new CleanupResult(candidatesChecked, cleaned, skipped, reviewNeeded, unmonitorFailures, deleteFailures);
+            }
         }
 
         if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext, check))
@@ -442,6 +458,12 @@ public class SingleCleanupService : ISingleCleanupService
     private void LogMatchDecision(Artist artist, Album single, Album? comparisonAlbumContext, SingleRedundancyCheck check, Tier3Action tier3Action = Tier3Action.FlagOnly)
     {
         var decision = check.IsRedundant ? "cleanup-approved" : "cleanup-skipped";
+
+        // AutoClean: Tier-3 matches that will be auto-cleaned should show "cleanup-approved"
+        if (!check.IsRedundant && tier3Action == Tier3Action.AutoClean && check.TrackResults.All(r => r.Tier != MatchTier.NoMatch))
+        {
+            decision = "cleanup-approved";
+        }
         foreach (var result in check.TrackResults)
         {
             var isReview = result.Tier == MatchTier.Tier3_TitleOnly && tier3Action == Tier3Action.FlagOnly;
