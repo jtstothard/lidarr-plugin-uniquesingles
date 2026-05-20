@@ -21,9 +21,11 @@
 
   <ItemGroup>
     <Compile Include="PluginIdentitySmokeTests.cs" />
+    <Compile Include="UniqueSinglesSettingsSchemaTests.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\UniqueSingles\UniqueSingles.csproj" />
+    <ProjectReference Include="..\..\ext\Lidarr\src\Lidarr.Http\Lidarr.Http.csproj" />
   </ItemGroup>
 </Project>
