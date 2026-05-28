@@ -5,7 +5,7 @@
     <RootNamespace>NzbDrone.Core</RootNamespace>
     <AssemblyName>Lidarr.Plugin.$(MSBuildProjectName)</AssemblyName>
     <Nullable>enable</Nullable>
-    <Version Condition="'$(Version)' == ''">0.0.0-local</Version>
+    <Version Condition="'$(Version)' == ''">1.0.2</Version>
     <!-- Disable analyzers inherited from Lidarr's Directory.Build.props -->
     <EnableAnalyzers>false</EnableAnalyzers>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
