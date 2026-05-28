@@ -62,6 +62,8 @@ public class ScheduledTaskServiceTests
         Assert.Equal(typeof(UniqueSinglesScanCommand).FullName, repo.InsertedTasks[0].TypeName);
         Assert.Equal(120, repo.InsertedTasks[0].Interval);
         Assert.Equal(CommandPriority.Low, repo.InsertedTasks[0].Priority);
+        Assert.Equal(repo.InsertedTasks[0].LastExecution, repo.InsertedTasks[0].LastStartTime);
+        Assert.True(DateTime.UtcNow - repo.InsertedTasks[0].LastExecution >= TimeSpan.FromMinutes(120));
     }
 
     [Fact]
@@ -108,7 +110,9 @@ public class ScheduledTaskServiceTests
             Id = 10,
             TypeName = typeof(UniqueSinglesScanCommand).FullName!,
             Interval = 120,
-            Priority = CommandPriority.Low
+            Priority = CommandPriority.Low,
+            LastExecution = new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc),
+            LastStartTime = default
         };
         repo.AllTasks.Add(existing);
 
@@ -119,6 +123,7 @@ public class ScheduledTaskServiceTests
         Assert.Empty(repo.InsertedTasks);
         Assert.Equal(240, existing.Interval);
         Assert.Equal(CommandPriority.Normal, existing.Priority);
+        Assert.Equal(existing.LastExecution, existing.LastStartTime);
     }
 
     [Fact]
