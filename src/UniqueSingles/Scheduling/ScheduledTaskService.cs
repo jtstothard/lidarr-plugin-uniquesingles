@@ -115,24 +115,36 @@ namespace NzbDrone.Core.Plugins.Scheduling
                 _logger.Debug("Scheduled task already exists for {0}, updating interval/priority", typeName);
                 existingTask.Interval = provider.IntervalMinutes;
                 existingTask.Priority = provider.Priority;
+
+                if (existingTask.LastStartTime == default)
+                {
+                    existingTask.LastStartTime = existingTask.LastExecution;
+                }
+
                 _scheduledTaskRepository.Update(existingTask);
                 _cache.Set(typeName, existingTask);
                 _registeredCommandTypes.Add(typeName);
                 return;
             }
 
+            var initialExecutionTime = DateTime.UtcNow.AddMinutes(-provider.IntervalMinutes - 1);
             var task = new ScheduledTask
             {
                 TypeName = typeName,
                 Interval = provider.IntervalMinutes,
                 Priority = provider.Priority,
-                LastExecution = DateTime.UtcNow
+                LastExecution = initialExecutionTime,
+                LastStartTime = initialExecutionTime
             };
 
             _scheduledTaskRepository.Insert(task);
             _cache.Set(typeName, task);
             _registeredCommandTypes.Add(typeName);
-            _logger.Info("Registered scheduled task: {0} interval={1}min priority={2}", typeName, provider.IntervalMinutes, provider.Priority);
+            _logger.Info(
+                "Registered scheduled task: {0} interval={1}min priority={2} firstRunDue=immediate",
+                typeName,
+                provider.IntervalMinutes,
+                provider.Priority);
         }
 
         private void UpdateTask(IProvideScheduledTask provider)
@@ -149,6 +161,12 @@ namespace NzbDrone.Core.Plugins.Scheduling
 
             existingTask.Interval = provider.IntervalMinutes;
             existingTask.Priority = provider.Priority;
+
+            if (existingTask.LastStartTime == default)
+            {
+                existingTask.LastStartTime = existingTask.LastExecution;
+            }
+
             _scheduledTaskRepository.Update(existingTask);
             _cache.Set(typeName, existingTask);
             _registeredCommandTypes.Add(typeName);
