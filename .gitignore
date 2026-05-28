@@ -30,3 +30,4 @@ vendor/
 coverage/
 .cache/
 tmp/
+_temp/
