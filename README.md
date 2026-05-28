@@ -74,6 +74,12 @@ Only singles with downloaded files are processed. Albums and EPs must be monitor
 - [Lidarr Issue #2671](https://github.com/Lidarr/Lidarr/issues/2671) — Unmonitor singles if on album
 - [Lidarr Issue #1025](https://github.com/Lidarr/Lidarr/issues/1025) — Singles included with Albums
 
+## Support
+
+If you find this plugin useful, consider buying me a coffee:
+
+[☕ Ko-fi](https://ko-fi.com/trshpotato)
+
 ## License
 
 [MIT](LICENSE)

@@ -31,3 +31,13 @@ coverage/
 .cache/
 tmp/
 _temp/
+
+# ── AI tooling (not for public release) ──
+.agents/
+.env.example
+EDGE-CASES.md
+GSD-PROMPT.md
+PROJECT.md
+UI_VISIBILITY_LIMITATION.md
+skills-lock.json
+scripts/verify_*.py
