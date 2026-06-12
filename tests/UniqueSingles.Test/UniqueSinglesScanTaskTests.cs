@@ -170,6 +170,15 @@ public class UniqueSinglesScanTaskTests
     // ── Settings resolution priority chain ─────────────────────────────
 
     [Fact]
+    public void IntervalMinutes_MissingMetadataDefinition_DefaultsTo1440()
+    {
+        var task = CreateTask(new StubCleanupService(), new StubArtistService(new List<Artist>()));
+        task.Definition = null!;
+
+        Assert.Equal(1440, task.IntervalMinutes);
+    }
+
+    [Fact]
     public void ResolveCleanupOptions_UsesNotificationSettings_WhenAvailable()
     {
         // Arrange: notification factory returns a definition with custom UniqueSinglesSettings
@@ -237,6 +246,23 @@ public class UniqueSinglesScanTaskTests
         task.Execute(new UniqueSinglesScanCommand());
 
         // Assert: defaults were used — scan completes normally
+        Assert.Single(cleanupService.ScannedArtists);
+    }
+
+    [Fact]
+    public void ResolveCleanupOptions_FallsBackToDefaults_WhenMetadataDefinitionIsMissing()
+    {
+        var factory = new StubNotificationFactory(new List<NotificationDefinition>());
+        var artists = new List<Artist> { MonitoredArtist(1, "Artist A") };
+        var artistService = new StubArtistService(artists);
+        var cleanupService = new StubCleanupService();
+        cleanupService.Results[1] = CleanupResult.Empty;
+
+        var task = CreateTask(cleanupService, artistService, notificationFactory: factory);
+        task.Definition = null!;
+
+        task.Execute(new UniqueSinglesScanCommand());
+
         Assert.Single(cleanupService.ScannedArtists);
     }
 

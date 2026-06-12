@@ -27,6 +27,7 @@
     <Compile Include="UniqueSinglesNotificationTests.cs" />
     <Compile Include="ScheduledTaskServiceTests.cs" />
     <Compile Include="UniqueSinglesScanTaskTests.cs" />
+    <Compile Include="AssemblySmokeTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -9,7 +9,7 @@ namespace NzbDrone.Core.Plugins;
 /// </summary>
 public class UniqueSinglesScanCommand : Command
 {
-    private string _resultMessage;
+    private string _resultMessage = string.Empty;
 
     public UniqueSinglesScanCommand()
     {

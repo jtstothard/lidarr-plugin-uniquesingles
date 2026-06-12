@@ -1,4 +1,3 @@
-using System.Reflection;
 using NzbDrone.Core.Messaging.Commands;
 using NzbDrone.Core.Plugins;
 using Xunit;
@@ -11,10 +10,12 @@ namespace UniqueSingles.Test;
 /// </summary>
 public class AssemblySmokeTests
 {
+    private static readonly Version SupportedLidarrVersion = new(3, 1, 3, 4968);
+
     [Fact]
     public void Assembly_ContainsCommandSubclass()
     {
-        var assembly = typeof(UniqueSingles.Commands.UniqueSinglesScanCommand).Assembly;
+        var assembly = typeof(UniqueSinglesScanCommand).Assembly;
 
         var commandTypes = assembly.GetTypes()
             .Where(t => t.IsClass && !t.IsAbstract && typeof(Command).IsAssignableFrom(t))
@@ -27,7 +28,7 @@ public class AssemblySmokeTests
     [Fact]
     public void Assembly_ContainsExecuteInterfaceImplementation()
     {
-        var assembly = typeof(UniqueSingles.Commands.UniqueSinglesScanCommand).Assembly;
+        var assembly = typeof(UniqueSinglesScanCommand).Assembly;
 
         var commandType = assembly.GetTypes()
             .FirstOrDefault(t => t.Name == "UniqueSinglesScanCommand");
@@ -44,13 +45,13 @@ public class AssemblySmokeTests
             .ToList();
 
         Assert.NotEmpty(executorTypes);
-        Assert.Contains(executorTypes, t => t.Name.Contains("UniqueSinglesScanCommandService", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(executorTypes, t => t.Name.Contains("UniqueSinglesScanTask", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
     public void Assembly_ExportsConcretePluginRootWithExpectedMetadata()
     {
-        var assembly = typeof(UniqueSingles.Commands.UniqueSinglesScanCommand).Assembly;
+        var assembly = typeof(UniqueSinglesScanCommand).Assembly;
 
         var pluginRoots = assembly.GetExportedTypes()
             .Where(t => t.IsClass && !t.IsAbstract && typeof(IPlugin).IsAssignableFrom(t))
@@ -64,5 +65,18 @@ public class AssemblySmokeTests
         Assert.Equal(UniqueSinglesPlugin.RepositoryOwner, plugin.Owner);
         Assert.Equal(UniqueSinglesPlugin.RepositoryUrl, plugin.GithubUrl);
         Assert.Equal("Lidarr.Plugin.UniqueSingles", assembly.GetName().Name);
+    }
+
+    [Fact]
+    public void Assembly_ReferencesSupportedLidarrAssemblyVersions()
+    {
+        var assembly = typeof(UniqueSinglesScanCommand).Assembly;
+        var references = assembly.GetReferencedAssemblies()
+            .Where(reference => reference.Name is "Lidarr.Core" or "Lidarr.Common")
+            .ToDictionary(reference => reference.Name!, reference => reference.Version);
+
+        Assert.Equal(SupportedLidarrVersion, references["Lidarr.Core"]);
+        Assert.Equal(SupportedLidarrVersion, references["Lidarr.Common"]);
+        Assert.DoesNotContain(references.Values, version => version?.Major == 10);
     }
 }

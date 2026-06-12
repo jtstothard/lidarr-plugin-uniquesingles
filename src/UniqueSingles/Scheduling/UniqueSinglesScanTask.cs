@@ -76,10 +76,11 @@ namespace NzbDrone.Core.Plugins
                 _logger.Warn(ex, "UniqueSingles scan: failed to resolve notification settings, falling back");
             }
 
-            if (Settings != null)
+            var metadataSettings = TryGetMetadataSettings();
+            if (metadataSettings != null)
             {
                 _logger.Info("UniqueSingles scan: using metadata provider settings (no notification found)");
-                return Settings.ToCleanupOptions();
+                return metadataSettings.ToCleanupOptions();
             }
 
             _logger.Info("UniqueSingles scan: using default settings (no notification or metadata provider settings)");
@@ -93,9 +94,25 @@ namespace NzbDrone.Core.Plugins
 
         public override Type CommandType => typeof(UniqueSinglesScanCommand);
 
-        public override int IntervalMinutes => Settings?.ScanIntervalMinutes ?? 1440;
+        public override int IntervalMinutes => TryGetMetadataSettings()?.ScanIntervalMinutes ?? 1440;
 
         public override CommandPriority Priority => CommandPriority.Low;
+
+        private UniqueSinglesSettings? TryGetMetadataSettings()
+        {
+            try
+            {
+                return Settings;
+            }
+            catch (NullReferenceException)
+            {
+                return null;
+            }
+            catch (InvalidCastException)
+            {
+                return null;
+            }
+        }
 
         /// <summary>
         /// Executes the full-library scan. Iterates all monitored artists,
@@ -199,7 +216,7 @@ namespace NzbDrone.Core.Plugins
         /// </summary>
         private void ExecutePerArtistScan(UniqueSinglesScanCommand command)
         {
-            var artistId = command.ArtistId.Value;
+            var artistId = command.ArtistId.GetValueOrDefault();
             _logger.Info("UniqueSingles per-artist scan starting: artistId={0}", artistId);
 
             var options = ResolveCleanupOptions();
