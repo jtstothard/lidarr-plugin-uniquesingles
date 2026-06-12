@@ -290,13 +290,28 @@ public class SingleCleanupService : ISingleCleanupService
         var downloadedSingleTracks = singleTracks.Where(t => t.HasFile).ToList();
         if (downloadedSingleTracks.Count == 0)
         {
-            _logger.Info(
-                "UniqueSingles cleanup skip: single has no downloaded track files. artistId={0} artist='{1}' singleId={2} single='{3}' reason=no-downloaded-single-tracks",
-                artist.Id,
-                artist.Name,
-                single.Id,
-                single.Title);
-            return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
+            var tier1Check = TrackMatcher.CheckSingle(singleTracks, albumTracks, options.DurationToleranceMs);
+            LogMatchDecision(artist, single, comparisonAlbumContext, tier1Check, options.Tier3Action);
+
+            if (!IsTier1OnlyRedundant(tier1Check))
+            {
+                _logger.Info(
+                    "UniqueSingles cleanup skip: single has no downloaded track files and is not fully Tier-1 redundant. artistId={0} artist='{1}' singleId={2} single='{3}' reason=no-downloaded-single-tracks-no-tier1-match",
+                    artist.Id,
+                    artist.Name,
+                    single.Id,
+                    single.Title);
+                return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
+            }
+
+            if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext, tier1Check))
+            {
+                unmonitorFailures = 1;
+                return new CleanupResult(candidatesChecked, cleaned, 0, 0, unmonitorFailures, 0);
+            }
+
+            cleaned = 1;
+            return new CleanupResult(candidatesChecked, cleaned, 0, 0, 0, 0);
         }
 
         var check = TrackMatcher.CheckSingle(downloadedSingleTracks, albumTracks, options.DurationToleranceMs);
@@ -380,14 +395,23 @@ public class SingleCleanupService : ISingleCleanupService
         var downloadedSingleTracks = singleTracks.Where(t => t.HasFile).ToList();
         if (downloadedSingleTracks.Count == 0)
         {
-            _logger.Info(
-                "UniqueSingles cleanup skip: single has no downloaded track files. artistId={0} artist='{1}' singleId={2} single='{3}' comparisonAlbumId={4} comparisonAlbum='{5}' reason=no-downloaded-single-tracks",
-                artist.Id,
-                artist.Name,
-                single.Id,
-                single.Title,
-                comparisonAlbumContext?.Id,
-                comparisonAlbumContext?.Title);
+            var tier1Check = TrackMatcher.CheckSingle(singleTracks, albumTracks);
+            LogMatchDecision(artist, single, comparisonAlbumContext, tier1Check);
+
+            if (!IsTier1OnlyRedundant(tier1Check))
+            {
+                _logger.Info(
+                    "UniqueSingles cleanup skip: single has no downloaded track files and is not fully Tier-1 redundant. artistId={0} artist='{1}' singleId={2} single='{3}' comparisonAlbumId={4} comparisonAlbum='{5}' reason=no-downloaded-single-tracks-no-tier1-match",
+                    artist.Id,
+                    artist.Name,
+                    single.Id,
+                    single.Title,
+                    comparisonAlbumContext?.Id,
+                    comparisonAlbumContext?.Title);
+                return;
+            }
+
+            TryUnmonitorSingle(artist, single, comparisonAlbumContext, tier1Check);
             return;
         }
 
@@ -607,6 +631,12 @@ public class SingleCleanupService : ISingleCleanupService
             3000,
             new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" },
             Tier3Action.FlagOnly);
+    }
+
+    private static bool IsTier1OnlyRedundant(SingleRedundancyCheck check)
+    {
+        return check.TrackResults.Count > 0 &&
+            check.TrackResults.All(result => result.Tier == MatchTier.Tier1_Mbid);
     }
 
     private static bool IsSingle(Album album)

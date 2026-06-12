@@ -265,15 +265,15 @@ public class SingleCleanupServiceTests
     }
 
     [Fact]
-    public void CleanupSinglesForArtist_SingleWithNoDownloadedTracks_IsSkipped()
+    public void CleanupSinglesForArtist_SingleWithNoDownloadedTracks_Tier2Only_IsSkipped()
     {
         var artist = Artist();
         var album = Album(100, "Album", "Album");
         var single = Album(200, "Not Downloaded", "Single");
         var albumService = new RecordingAlbumService(album, single);
         var trackService = new RecordingTrackService()
-            .WithTracks(album.Id, Track("Song", 180000, "mbid", fileId: 11))
-            .WithTracks(single.Id, Track("Song", 180000, "mbid", fileId: 0));
+            .WithTracks(album.Id, Track("Song", 180000, "album-mbid", fileId: 11))
+            .WithTracks(single.Id, Track("Song", 180000, "single-mbid", fileId: 0));
         var mediaFileService = new RecordingMediaFileService();
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
@@ -286,7 +286,29 @@ public class SingleCleanupServiceTests
     }
 
     [Fact]
-    public void CleanupSingleSelfCheckWithOptions_NoDownloadedTracks_ReturnsSkippedCountsAndReason()
+    public void CleanupSinglesForArtist_SingleWithNoDownloadedTracks_Tier1Only_UnmonitorsWithoutDelete()
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var single = Album(200, "Not Downloaded", "Single");
+        var albumService = new RecordingAlbumService(album, single);
+        var trackService = new RecordingTrackService()
+            .WithTracks(album.Id, Track("Song", 180000, "same-mbid", fileId: 11))
+            .WithTracks(single.Id, Track("Song", 0, "same-mbid", fileId: 0));
+        var mediaFileService = new RecordingMediaFileService();
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+
+        service.CleanupSinglesForArtist(artist, album);
+
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
+        Assert.False(single.Monitored);
+        Assert.Empty(mediaFileService.AlbumLookupIds);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void CleanupSingleSelfCheckWithOptions_NoDownloadedTracks_Tier2Only_ReturnsSkippedCountsAndReason()
     {
         var artist = Artist();
         var comparisonAlbum = Album(100, "Album", "Album");
@@ -312,7 +334,36 @@ public class SingleCleanupServiceTests
         Assert.Empty(albumService.SetMonitoredCalls);
         Assert.Empty(mediaFileService.AlbumLookupIds);
         Assert.Empty(deleteMediaFiles.DeletedFiles);
-        Assert.Contains(logger.InfoMessages, m => m.Contains("reason=no-downloaded-single-tracks", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(logger.InfoMessages, m => m.Contains("reason=no-downloaded-single-tracks-no-tier1-match", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void CleanupSingleSelfCheckWithOptions_NoDownloadedTracks_Tier1Only_ReturnsCleanedCountsWithoutDelete()
+    {
+        var artist = Artist();
+        var comparisonAlbum = Album(100, "Album", "Album");
+        var importedSingle = Album(200, "Not Downloaded", "Single");
+        var albumService = new RecordingAlbumService(comparisonAlbum, importedSingle);
+        var trackService = new RecordingTrackService()
+            .WithTracks(comparisonAlbum.Id, Track("Song", 180000, "same-mbid", fileId: 11))
+            .WithTracks(importedSingle.Id, Track("Song", 0, "same-mbid", fileId: 0));
+        var mediaFileService = new RecordingMediaFileService();
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album" }, Tier3Action.FlagOnly);
+
+        var result = service.CleanupSingleSelfCheckWithOptions(artist, importedSingle, options);
+
+        Assert.Equal(1, result.CandidatesChecked);
+        Assert.Equal(1, result.Cleaned);
+        Assert.Equal(0, result.Skipped);
+        Assert.Equal(0, result.ReviewNeeded);
+        Assert.Equal(0, result.UnmonitorFailures);
+        Assert.Equal(0, result.DeleteFailures);
+        Assert.Contains((importedSingle.Id, false), albumService.SetMonitoredCalls);
+        Assert.False(importedSingle.Monitored);
+        Assert.Empty(mediaFileService.AlbumLookupIds);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
     }
 
     [Fact]
