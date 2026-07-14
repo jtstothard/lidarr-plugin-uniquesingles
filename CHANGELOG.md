@@ -2,6 +2,15 @@
 
 All notable changes to Unique Singles will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- `CONTRIBUTING.md`, `SECURITY.md`, and `CODE_OF_CONDUCT.md`
+- Issue and pull request templates
+- Dependabot config for NuGet and GitHub Actions dependencies
+- CodeQL security scanning workflow
+
 ## [1.0.2] - 2025-05-28
 
 ### Added
