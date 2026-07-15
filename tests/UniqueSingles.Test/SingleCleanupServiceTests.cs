@@ -265,7 +265,7 @@ public class SingleCleanupServiceTests
     }
 
     [Fact]
-    public void CleanupSinglesForArtist_SingleWithNoDownloadedTracks_IsSkipped()
+    public void CleanupSinglesForArtist_SingleWithNoDownloadedTracks_Tier1Match_Unmonitors()
     {
         var artist = Artist();
         var album = Album(100, "Album", "Album");
@@ -280,9 +280,10 @@ public class SingleCleanupServiceTests
 
         service.CleanupSinglesForArtist(artist, album);
 
-        Assert.Empty(albumService.SetMonitoredCalls);
+        // With new Tier-1 behavior, single should be unmonitored (exact MBID match)
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
         Assert.Empty(mediaFileService.AlbumLookupIds);
-        Assert.Empty(deleteMediaFiles.DeletedFiles);
+        Assert.Empty(deleteMediaFiles.DeletedFiles); // No files to delete
     }
 
     [Fact]
