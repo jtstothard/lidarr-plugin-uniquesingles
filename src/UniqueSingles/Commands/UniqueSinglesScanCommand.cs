@@ -14,6 +14,7 @@ public class UniqueSinglesScanCommand : Command
     public UniqueSinglesScanCommand()
     {
         SendUpdatesToClient = true;
+        _resultMessage = string.Empty;
     }
 
     /// <summary>

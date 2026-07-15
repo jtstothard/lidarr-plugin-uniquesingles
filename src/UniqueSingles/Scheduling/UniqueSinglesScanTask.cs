@@ -45,6 +45,48 @@ namespace NzbDrone.Core.Plugins
         }
 
         /// <summary>
+        /// Safely resolves the scan interval from metadata provider settings.
+        /// Handles null Definition and type conversion failures, logging fallback to default.
+        /// Matches the error handling pattern of ResolveNotificationSettings.
+        /// </summary>
+        private int TryGetMetadataSettings()
+        {
+            try
+            {
+                if (Definition == null)
+                {
+                    _logger.Debug(
+                        "UniqueSingles interval: metadata provider Definition is null, using default 1440 minutes");
+                    return 1440;
+                }
+
+                if (Definition.Settings is UniqueSinglesSettings settings)
+                {
+                    var interval = settings.ScanIntervalMinutes;
+                    _logger.Debug(
+                        "UniqueSingles interval: using metadata provider settings, interval {0} minutes", interval);
+                    return interval;
+                }
+
+                _logger.Debug(
+                    "UniqueSingles interval: metadata provider Settings is not UniqueSinglesSettings type, using default 1440 minutes");
+                return 1440;
+            }
+            catch (NullReferenceException ex)
+            {
+                _logger.Warn(ex,
+                    "UniqueSingles interval: NullReferenceException when accessing metadata provider settings, using default 1440 minutes");
+                return 1440;
+            }
+            catch (InvalidCastException ex)
+            {
+                _logger.Warn(ex,
+                    "UniqueSingles interval: InvalidCastException when casting metadata provider settings, using default 1440 minutes");
+                return 1440;
+            }
+        }
+
+        /// <summary>
         /// Resolves cleanup options using notification settings (Settings > Connect) as the
         /// source of truth. Falls back to metadata provider settings, then to hardcoded defaults.
         /// </summary>
@@ -93,7 +135,11 @@ namespace NzbDrone.Core.Plugins
 
         public override Type CommandType => typeof(UniqueSinglesScanCommand);
 
-        public override int IntervalMinutes => Settings?.ScanIntervalMinutes ?? 1440;
+        /// <summary>
+        /// Resolves the scan interval from metadata provider settings with proper error handling.
+        /// Falls back to 1440-minute default on any failure and logs the fallback.
+        /// </summary>
+        public override int IntervalMinutes => TryGetMetadataSettings();
 
         public override CommandPriority Priority => CommandPriority.Low;
 
@@ -199,7 +245,7 @@ namespace NzbDrone.Core.Plugins
         /// </summary>
         private void ExecutePerArtistScan(UniqueSinglesScanCommand command)
         {
-            var artistId = command.ArtistId.Value;
+            var artistId = command.ArtistId.GetValueOrDefault();
             _logger.Info("UniqueSingles per-artist scan starting: artistId={0}", artistId);
 
             var options = ResolveCleanupOptions();

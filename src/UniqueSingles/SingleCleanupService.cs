@@ -290,8 +290,34 @@ public class SingleCleanupService : ISingleCleanupService
         var downloadedSingleTracks = singleTracks.Where(t => t.HasFile).ToList();
         if (downloadedSingleTracks.Count == 0)
         {
+            // Check if single is fully Tier-1 redundant (exact MBID matches) before skipping
+            bool isTier1Redundant = TrackMatcher.IsTier1OnlyRedundant(singleTracks, albumTracks);
+
+            if (isTier1Redundant)
+            {
+                _logger.Info(
+                    "UniqueSingles Tier-1 unmonitor: single has no downloaded files but is fully Tier-1 redundant (exact MBID matches). artistId={0} artist='{1}' singleId={2} single='{3}' reason=tier1-mbid-matches-no-files",
+                    artist.Id,
+                    artist.Name,
+                    single.Id,
+                    single.Title);
+
+                // Unmonitor but don't delete (no files to delete)
+                if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext,
+                    new SingleRedundancyCheck(true, new List<MatchResult>(),
+                    "Fully Tier-1 redundant by MBID matching (no files present).")))
+                {
+                    unmonitorFailures = 1;
+                    return new CleanupResult(candidatesChecked, cleaned, 0, 0, unmonitorFailures, 0);
+                }
+
+                // Successfully unmonitored, no deletion needed
+                cleaned = 1;
+                return new CleanupResult(candidatesChecked, cleaned, 0, 0, 0, 0);
+            }
+
             _logger.Info(
-                "UniqueSingles cleanup skip: single has no downloaded track files. artistId={0} artist='{1}' singleId={2} single='{3}' reason=no-downloaded-single-tracks",
+                "UniqueSingles cleanup skip: single has no downloaded track files and is not fully Tier-1 redundant. artistId={0} artist='{1}' singleId={2} single='{3}' reason=no-downloaded-single-tracks-not-tier1",
                 artist.Id,
                 artist.Name,
                 single.Id,
@@ -380,8 +406,29 @@ public class SingleCleanupService : ISingleCleanupService
         var downloadedSingleTracks = singleTracks.Where(t => t.HasFile).ToList();
         if (downloadedSingleTracks.Count == 0)
         {
+            // Check if single is fully Tier-1 redundant (exact MBID matches) before skipping
+            bool isTier1Redundant = TrackMatcher.IsTier1OnlyRedundant(singleTracks, albumTracks);
+
+            if (isTier1Redundant)
+            {
+                _logger.Info(
+                    "UniqueSingles Tier-1 unmonitor: single has no downloaded files but is fully Tier-1 redundant (exact MBID matches). artistId={0} artist='{1}' singleId={2} single='{3}' comparisonAlbumId={4} comparisonAlbum='{5}' reason=tier1-mbid-matches-no-files",
+                    artist.Id,
+                    artist.Name,
+                    single.Id,
+                    single.Title,
+                    comparisonAlbumContext?.Id,
+                    comparisonAlbumContext?.Title);
+
+                // Unmonitor but don't delete (no files to delete)
+                TryUnmonitorSingle(artist, single, comparisonAlbumContext,
+                    new SingleRedundancyCheck(true, new List<MatchResult>(),
+                    "Fully Tier-1 redundant by MBID matching (no files present)."));
+                return;
+            }
+
             _logger.Info(
-                "UniqueSingles cleanup skip: single has no downloaded track files. artistId={0} artist='{1}' singleId={2} single='{3}' comparisonAlbumId={4} comparisonAlbum='{5}' reason=no-downloaded-single-tracks",
+                "UniqueSingles cleanup skip: single has no downloaded track files and is not fully Tier-1 redundant. artistId={0} artist='{1}' singleId={2} single='{3}' comparisonAlbumId={4} comparisonAlbum='{5}' reason=no-downloaded-single-tracks-not-tier1",
                 artist.Id,
                 artist.Name,
                 single.Id,
