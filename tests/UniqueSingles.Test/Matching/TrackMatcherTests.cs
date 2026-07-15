@@ -767,4 +767,202 @@ public class TrackMatcherTests
         var result = TrackMatcher.CheckSingle(singleTracks, albumTracks, 50000);
         Assert.True(result.IsRedundant);
     }
+
+    // ============================================================
+    // IsTier1OnlyRedundant tests
+    // ============================================================
+
+    [Fact]
+    public void IsTier1OnlyRedundant_AllTracksHaveMBIDMatches_ReturnsTrue()
+    {
+        var singleTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1"),
+            CreateTrack("Track B", duration: 200000, foreignRecordingId: "mbid-b-1"),
+        };
+
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1"),
+            CreateTrack("Track B", duration: 200000, foreignRecordingId: "mbid-b-1"),
+        };
+
+        var result = TrackMatcher.IsTier1OnlyRedundant(singleTracks, albumTracks);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void IsTier1OnlyRedundant_OneTrackMissingMBID_ReturnsFalse()
+    {
+        var singleTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1"),
+            CreateTrack("Track B", duration: 200000, foreignRecordingId: ""), // No MBID
+        };
+
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1"),
+            CreateTrack("Track B", duration: 200000, foreignRecordingId: "mbid-b-1"),
+        };
+
+        var result = TrackMatcher.IsTier1OnlyRedundant(singleTracks, albumTracks);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void IsTier1OnlyRedundant_OneTrackWithoutMBIDMatch_ReturnsFalse()
+    {
+        var singleTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1"),
+            CreateTrack("Track B", duration: 200000, foreignRecordingId: "mbid-b-unique"), // No match
+        };
+
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1"),
+            CreateTrack("Track C", duration: 210000, foreignRecordingId: "mbid-c-1"),
+        };
+
+        var result = TrackMatcher.IsTier1OnlyRedundant(singleTracks, albumTracks);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void IsTier1OnlyRedundant_NullSingleTracks_ReturnsFalse()
+    {
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1"),
+        };
+
+        var result = TrackMatcher.IsTier1OnlyRedundant(null!, albumTracks);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void IsTier1OnlyRedundant_EmptySingleTracks_ReturnsFalse()
+    {
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1"),
+        };
+
+        var result = TrackMatcher.IsTier1OnlyRedundant(new List<Track>(), albumTracks);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void IsTier1OnlyRedundant_NullAlbumTracks_ReturnsFalse()
+    {
+        var singleTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1"),
+        };
+
+        var result = TrackMatcher.IsTier1OnlyRedundant(singleTracks, null!);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void IsTier1OnlyRedundant_EmptyAlbumTracks_ReturnsFalse()
+    {
+        var singleTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1"),
+        };
+
+        var result = TrackMatcher.IsTier1OnlyRedundant(singleTracks, new List<Track>());
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void IsTier1OnlyRedundant_SingleTrackWithMBIDMatch_ReturnsTrue()
+    {
+        var singleTracks = new List<Track>
+        {
+            CreateTrack("Solo Track", duration: 200000, foreignRecordingId: "mbid-solo"),
+        };
+
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Solo Track", duration: 200000, foreignRecordingId: "mbid-solo"),
+        };
+
+        var result = TrackMatcher.IsTier1OnlyRedundant(singleTracks, albumTracks);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void IsTier1OnlyRedundant_DoesNotRequireHasFileTrue()
+    {
+        // Single has no downloaded files (hasFile: false)
+        var singleTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1", hasFile: false),
+            CreateTrack("Track B", duration: 200000, foreignRecordingId: "mbid-b-1", hasFile: false),
+        };
+
+        // Album tracks also have no files (hasFile: false)
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1", hasFile: false),
+            CreateTrack("Track B", duration: 200000, foreignRecordingId: "mbid-b-1", hasFile: false),
+        };
+
+        var result = TrackMatcher.IsTier1OnlyRedundant(singleTracks, albumTracks);
+
+        // Should still return true because MBID matching doesn't require files
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void IsTier1OnlyRedundant_MixedFileStatus_AllMBIDMatches_ReturnsTrue()
+    {
+        // Mixed file status but all MBIDs match
+        var singleTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1", hasFile: true),
+            CreateTrack("Track B", duration: 200000, foreignRecordingId: "mbid-b-1", hasFile: false),
+        };
+
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1", hasFile: true),
+            CreateTrack("Track B", duration: 200000, foreignRecordingId: "mbid-b-1", hasFile: false),
+        };
+
+        var result = TrackMatcher.IsTier1OnlyRedundant(singleTracks, albumTracks);
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void IsTier1OnlyRedundant_CaseSensitiveMBIDComparison()
+    {
+        // MBIDs should be compared case-sensitively (UUIDs are case-sensitive)
+        var singleTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1-ABC"),
+        };
+
+        var albumTracks = new List<Track>
+        {
+            CreateTrack("Track A", duration: 180000, foreignRecordingId: "mbid-a-1-abc"), // Different case
+        };
+
+        var result = TrackMatcher.IsTier1OnlyRedundant(singleTracks, albumTracks);
+
+        // Should return false because MBIDs don't match exactly
+        Assert.False(result);
+    }
 }

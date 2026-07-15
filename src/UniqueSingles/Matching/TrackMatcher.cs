@@ -213,6 +213,54 @@ public static class TrackMatcher
         return new SingleRedundancyCheck(isRedundant, trackResults, summaryReason);
     }
 
+    /// <summary>
+    /// Checks whether a single is fully Tier-1 redundant (all tracks have exact MBID matches).
+    /// This does NOT require tracks to have files — MBID matching is sufficient for safety.
+    /// Used to unmonitor singles even when no files are downloaded yet.
+    /// </summary>
+    /// <param name="singleTracks">All tracks on the single release.</param>
+    /// <param name="albumTracks">All tracks from monitored albums/EPs (including those without files).</param>
+    /// <returns>True if all single tracks have exact MBID matches with album tracks.</returns>
+    public static bool IsTier1OnlyRedundant(List<Track> singleTracks, List<Track> albumTracks)
+    {
+        if (singleTracks == null || singleTracks.Count == 0)
+        {
+            return false;
+        }
+
+        if (albumTracks == null || albumTracks.Count == 0)
+        {
+            return false;
+        }
+
+        // Check if every single track has an exact MBID match
+        foreach (var singleTrack in singleTracks)
+        {
+            if (string.IsNullOrWhiteSpace(singleTrack.ForeignRecordingId))
+            {
+                return false; // No MBID available, can't be Tier-1 match
+            }
+
+            bool hasMatch = false;
+            foreach (var albumTrack in albumTracks)
+            {
+                if (!string.IsNullOrWhiteSpace(albumTrack.ForeignRecordingId) &&
+                    singleTrack.ForeignRecordingId == albumTrack.ForeignRecordingId)
+                {
+                    hasMatch = true;
+                    break;
+                }
+            }
+
+            if (!hasMatch)
+            {
+                return false; // At least one track lacks MBID match
+            }
+        }
+
+        return true; // All tracks have exact MBID matches
+    }
+
     private static MatchResult? FindTier1Match(Track singleTrack, List<Track> albumTracks)
     {
         if (string.IsNullOrWhiteSpace(singleTrack.ForeignRecordingId))
