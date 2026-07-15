@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -57,7 +57,7 @@ jobs:
           zip /tmp/${{ env.PLUGIN_NAME }}.net8.0.zip Lidarr.Plugin.UniqueSingles.dll Lidarr.Plugin.UniqueSingles.pdb
 
       - name: Upload Release Asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         if: github.ref == 'refs/heads/main'
         with:
           tag_name: ${{ env.PLUGIN_VERSION }}
