@@ -1,0 +1,51 @@
+name: Bug Report
+description: Report unexpected behavior, crashes, or incorrect matching/deletion
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. If this involves unsafe or unintended file deletion, please see [SECURITY.md](../../SECURITY.md) instead of filing a public issue.
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      placeholder: e.g. 1.0.2.42
+    validations:
+      required: true
+  - type: input
+    id: lidarr-version
+    attributes:
+      label: Lidarr version
+      placeholder: e.g. 3.1.3.4968 (nightly)
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this?
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste any relevant Lidarr log output (redact personal info/paths if needed).
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: settings
+    attributes:
+      label: Unique Singles settings
+      description: Duration tolerance, release types, title-only match action, scan interval, etc.
+    validations:
+      required: false
