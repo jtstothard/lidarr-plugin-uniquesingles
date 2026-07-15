@@ -18,6 +18,7 @@ env:
   PLUGIN_NAME: Lidarr.Plugin.UniqueSingles
   PLUGIN_VERSION: 1.0.2.${{ github.run_number }}
   DOTNET_VERSION: 8.0.405
+  LIDARR_VERSION: 3.1.3.4968
 
 jobs:
   build:
@@ -33,6 +34,12 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Pin Lidarr assembly version
+        run: |
+          props=ext/Lidarr/src/Directory.Build.props
+          sed -i -E "s#<AssemblyVersion>[0-9.*]+</AssemblyVersion>#<AssemblyVersion>${LIDARR_VERSION}</AssemblyVersion>#" "$props"
+          grep "<AssemblyVersion>${LIDARR_VERSION}</AssemblyVersion>" "$props"
 
       - name: Build
         run: |
