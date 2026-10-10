@@ -61,7 +61,7 @@ Unique Singles uses a 3-tier cascade to match single tracks against album/EP tra
 - **On import:** When an album or EP is imported, Unique Singles checks whether any monitored singles contain tracks matching the imported tracks. Matching singles are unmonitored and their files deleted.
 - **Scheduled scan:** A full-library scan runs periodically (configurable interval) to catch any singles that were missed by import-triggered cleanup — for example, singles added before the plugin was installed.
 
-Only singles with downloaded files are processed. Albums and EPs must be monitored and have files imported to be used as comparison sources.
+Only singles with downloaded files are processed. Albums and EPs must be monitored and have files imported to be used as comparison sources. Releases with a Live, Remix, DJ-mix, or Demo secondary type are never used as comparison sources, because their tracks often share a title and length with the studio recording.
 
 ## Known Issues
 

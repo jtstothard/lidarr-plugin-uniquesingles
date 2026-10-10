@@ -1292,4 +1292,60 @@ public class SingleCleanupServiceTests
         Assert.Contains((tier1Single.Id, false), albumService.SetMonitoredCalls);
         Assert.Empty(deleteMediaFiles.DeletedFiles); // No files to delete
     }
+
+    // ============================================================
+    // Secondary album types
+    // ============================================================
+
+    [Fact]
+    public void ScanArtistWithOptions_LiveAlbumTitleDurationMatch_DoesNotCleanSingle()
+    {
+        var artist = Artist();
+        var liveAlbum = Album(100, "Live at the Venue", "Album");
+        liveAlbum.SecondaryTypes = new List<SecondaryAlbumType> { SecondaryAlbumType.Live };
+        var single = Album(200, "Song", "Single");
+        var albumService = new RecordingAlbumService(liveAlbum, single);
+
+        // Same title, duration within tolerance, different recording
+        var trackService = new RecordingTrackService()
+            .WithTracks(liveAlbum.Id, Track("Song", 181000, "live-mbid", fileId: 11))
+            .WithTracks(single.Id, Track("Song", 180000, "studio-mbid", fileId: 21));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(21, single.Id, "/music/single/song.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.FlagOnly);
+
+        var result = service.ScanArtistWithOptions(artist, options);
+
+        Assert.Equal(0, result.Cleaned);
+        Assert.Empty(albumService.SetMonitoredCalls);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void ScanArtistWithOptions_CompilationAlbumMbidMatch_StillCleansSingle()
+    {
+        var artist = Artist();
+        var compilation = Album(100, "Greatest Hits", "Album");
+        compilation.SecondaryTypes = new List<SecondaryAlbumType> { SecondaryAlbumType.Compilation };
+        var single = Album(200, "Song", "Single");
+        var albumService = new RecordingAlbumService(compilation, single);
+
+        var trackService = new RecordingTrackService()
+            .WithTracks(compilation.Id, Track("Song", 180000, "shared-mbid", fileId: 11))
+            .WithTracks(single.Id, Track("Song", 180000, "shared-mbid", fileId: 21));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(21, single.Id, "/music/single/song.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.FlagOnly);
+
+        var result = service.ScanArtistWithOptions(artist, options);
+
+        Assert.Equal(1, result.Cleaned);
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
+    }
 }
