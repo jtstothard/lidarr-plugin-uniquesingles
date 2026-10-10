@@ -11,6 +11,10 @@ All notable changes to Unique Singles will be documented in this file.
 - Dependabot config for NuGet and GitHub Actions dependencies
 - CodeQL security scanning workflow
 
+### Fixed
+
+- With `Single` in **Release types to compare**, every downloaded single matched its own tracks and was deleted. A single is now never compared against itself, and of two identical singles only one is removed.
+
 ## [1.0.2] - 2025-05-28
 
 ### Added

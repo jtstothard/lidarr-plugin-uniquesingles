@@ -1292,4 +1292,60 @@ public class SingleCleanupServiceTests
         Assert.Contains((tier1Single.Id, false), albumService.SetMonitoredCalls);
         Assert.Empty(deleteMediaFiles.DeletedFiles); // No files to delete
     }
+
+    // ============================================================
+    // "Single" as a comparison type
+    // ============================================================
+
+    [Fact]
+    public void ScanArtistWithOptions_SingleComparisonType_DoesNotMatchSingleAgainstItself()
+    {
+        var artist = Artist();
+        var single = Album(200, "Only Single", "Single");
+        var albumService = new RecordingAlbumService(single);
+
+        var trackService = new RecordingTrackService()
+            .WithTracks(single.Id, Track("Song", 180000, "single-mbid", fileId: 21));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(21, single.Id, "/music/single/song.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP", "Single" }, Tier3Action.FlagOnly);
+
+        var result = service.ScanArtistWithOptions(artist, options);
+
+        Assert.Equal(1, result.CandidatesChecked);
+        Assert.Equal(0, result.Cleaned);
+        Assert.Empty(albumService.SetMonitoredCalls);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void ScanArtistWithOptions_SingleComparisonType_KeepsOneOfTwoIdenticalSingles()
+    {
+        var artist = Artist();
+        var first = Album(200, "Song", "Single");
+        var second = Album(300, "Song", "Single");
+        var albumService = new RecordingAlbumService(first, second);
+
+        var trackService = new RecordingTrackService()
+            .WithTracks(first.Id, Track("Song", 180000, "shared-mbid", fileId: 21))
+            .WithTracks(second.Id, Track("Song", 180000, "shared-mbid", fileId: 31));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(first.Id, File(21, first.Id, "/music/first/song.flac"))
+            .WithFiles(second.Id, File(31, second.Id, "/music/second/song.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP", "Single" }, Tier3Action.FlagOnly);
+
+        var result = service.ScanArtistWithOptions(artist, options);
+
+        Assert.Equal(2, result.CandidatesChecked);
+        Assert.Equal(1, result.Cleaned);
+        Assert.Equal(1, result.Skipped);
+        Assert.Single(albumService.SetMonitoredCalls);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+    }
 }
