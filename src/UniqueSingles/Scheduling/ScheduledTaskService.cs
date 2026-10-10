@@ -33,6 +33,13 @@ namespace NzbDrone.Core.Plugins.Scheduling
         /// </summary>
         private readonly HashSet<string> _registeredCommandTypes = new();
 
+        /// <summary>
+        /// ScheduledTask rows captured before Lidarr's TaskManager removes non-built-in
+        /// tasks at startup, keyed by TypeName. Used to restore LastExecution so a
+        /// restart does not make the task due immediately.
+        /// </summary>
+        private Dictionary<string, ScheduledTask> _capturedTasks = new();
+
         public ScheduledTaskService(
             IMetadataFactory metadataFactory,
             IScheduledTaskRepository scheduledTaskRepository,
@@ -105,6 +112,24 @@ namespace NzbDrone.Core.Plugins.Scheduling
             CleanupOrphanedTasks();
         }
 
+        /// <summary>
+        /// Snapshots existing ScheduledTask rows. Called on ApplicationStartingEvent,
+        /// before TaskManager deletes rows it does not recognise.
+        /// </summary>
+        public void CaptureExistingTasks()
+        {
+            try
+            {
+                _capturedTasks = _scheduledTaskRepository.All()
+                    .GroupBy(t => t.TypeName)
+                    .ToDictionary(g => g.Key, g => g.First());
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn(ex, "Failed to capture existing scheduled tasks");
+            }
+        }
+
         private void RegisterTask(IProvideScheduledTask provider)
         {
             var typeName = provider.CommandType.FullName!;
@@ -127,24 +152,36 @@ namespace NzbDrone.Core.Plugins.Scheduling
                 return;
             }
 
-            var initialExecutionTime = DateTime.UtcNow.AddMinutes(-provider.IntervalMinutes - 1);
             var task = new ScheduledTask
             {
                 TypeName = typeName,
                 Interval = provider.IntervalMinutes,
-                Priority = provider.Priority,
-                LastExecution = initialExecutionTime,
-                LastStartTime = initialExecutionTime
+                Priority = provider.Priority
             };
+
+            if (_capturedTasks.TryGetValue(typeName, out var captured))
+            {
+                // Row was removed by TaskManager during startup; keep the previous run time.
+                task.LastExecution = captured.LastExecution;
+                task.LastStartTime = captured.LastStartTime == default ? captured.LastExecution : captured.LastStartTime;
+                _capturedTasks.Remove(typeName);
+            }
+            else
+            {
+                var initialExecutionTime = DateTime.UtcNow.AddMinutes(-provider.IntervalMinutes - 1);
+                task.LastExecution = initialExecutionTime;
+                task.LastStartTime = initialExecutionTime;
+            }
 
             _scheduledTaskRepository.Insert(task);
             _cache.Set(typeName, task);
             _registeredCommandTypes.Add(typeName);
             _logger.Info(
-                "Registered scheduled task: {0} interval={1}min priority={2} firstRunDue=immediate",
+                "Registered scheduled task: {0} interval={1}min priority={2} nextRunDue={3:u}",
                 typeName,
                 provider.IntervalMinutes,
-                provider.Priority);
+                provider.Priority,
+                task.LastExecution.AddMinutes(provider.IntervalMinutes));
         }
 
         private void UpdateTask(IProvideScheduledTask provider)
