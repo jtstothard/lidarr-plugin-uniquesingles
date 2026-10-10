@@ -79,4 +79,24 @@ public class AssemblySmokeTests
         Assert.Equal(SupportedLidarrVersion, references["Lidarr.Common"]);
         Assert.DoesNotContain(references.Values, version => version?.Major == 10);
     }
+
+    [Fact]
+    public void Plugin_InstalledVersion_MatchesInformationalVersion()
+    {
+        // Lidarr compares InstalledVersion with the latest release tag to decide whether an
+        // update is available. If InformationalVersion cannot be parsed (for example a
+        // "+<commit>" suffix), Lidarr falls back to the assembly version and can report the
+        // wrong installed version.
+        var assembly = typeof(UniqueSinglesPlugin).Assembly;
+        var informationalVersion = assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .Cast<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .Single()
+            .InformationalVersion;
+
+        var parsed = PluginVersion.Parse(informationalVersion);
+
+        Assert.NotNull(parsed);
+        Assert.Equal(parsed, new UniqueSinglesPlugin().InstalledVersion);
+    }
 }

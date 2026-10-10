@@ -11,6 +11,10 @@ All notable changes to Unique Singles will be documented in this file.
 - Dependabot config for NuGet and GitHub Actions dependencies
 - CodeQL security scanning workflow
 
+### Fixed
+
+- Release builds now carry the release version. Every build previously reported 1.0.2.0, so Lidarr always offered an update that never cleared after installing it (#25).
+
 ## [1.0.2] - 2025-05-28
 
 ### Added
