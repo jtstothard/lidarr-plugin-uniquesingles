@@ -221,6 +221,79 @@ public class ScheduledTaskServiceTests
         Assert.True(logger.HasMessageContaining("Failed to register scheduled task"));
     }
 
+    // ── Restart handling ──────────────────────────────────────────────
+
+    [Fact]
+    public void InitializeTasks_AfterTaskManagerRemovedRow_KeepsCapturedLastExecution()
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 1440, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider);
+        var repo = new StubScheduledTaskRepository();
+        var cache = new CacheManager();
+        using var logger = new TestLogger();
+
+        var lastRun = DateTime.UtcNow.AddHours(-1);
+        repo.AllTasks.Add(new ScheduledTask
+        {
+            Id = 7,
+            TypeName = typeof(UniqueSinglesScanCommand).FullName!,
+            Interval = 1440,
+            Priority = CommandPriority.Low,
+            LastExecution = lastRun,
+            LastStartTime = lastRun
+        });
+
+        var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
+
+        // ApplicationStartingEvent
+        service.CaptureExistingTasks();
+
+        // TaskManager handles ApplicationStartedEvent and deletes non-built-in rows
+        repo.AllTasks.Clear();
+
+        // Plugin handles ApplicationStartedEvent last
+        service.InitializeTasks();
+
+        Assert.Single(repo.InsertedTasks);
+        Assert.Equal(lastRun, repo.InsertedTasks[0].LastExecution);
+        Assert.Equal(lastRun, repo.InsertedTasks[0].LastStartTime);
+    }
+
+    [Fact]
+    public void InitializeTasks_NoCapturedRow_IsDueImmediately()
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 1440, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider);
+        var repo = new StubScheduledTaskRepository();
+        var cache = new CacheManager();
+        using var logger = new TestLogger();
+
+        var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
+        service.CaptureExistingTasks();
+        service.InitializeTasks();
+
+        Assert.Single(repo.InsertedTasks);
+        Assert.True(DateTime.UtcNow - repo.InsertedTasks[0].LastExecution >= TimeSpan.FromMinutes(1440));
+    }
+
+    [Fact]
+    public void Starter_HandlesApplicationStartedAfterTaskManager()
+    {
+        var method = typeof(ScheduledTaskServiceStarter).GetMethod(
+            nameof(ScheduledTaskServiceStarter.Handle),
+            new[] { typeof(NzbDrone.Core.Lifecycle.ApplicationStartedEvent) });
+
+        var attribute = method!
+            .GetCustomAttributes(typeof(NzbDrone.Core.Messaging.EventHandleOrderAttribute), true)
+            .Cast<NzbDrone.Core.Messaging.EventHandleOrderAttribute>()
+            .SingleOrDefault();
+
+        Assert.NotNull(attribute);
+        Assert.Equal(NzbDrone.Core.Messaging.EventHandleOrder.Last, attribute!.EventHandleOrder);
+    }
+
     // ── Stub implementations ──────────────────────────────────────────
 
     private sealed class StubScheduledTaskProvider : IMetadata, IProvideScheduledTask
