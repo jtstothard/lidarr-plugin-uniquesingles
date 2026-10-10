@@ -48,7 +48,7 @@ public class UniqueSinglesSettings : IProviderConfig
     [FieldDefinition(2, Label = "Title-only match action", Type = FieldType.Select, SelectOptions = typeof(Tier3Action), HelpText = "Safe behavior for Tier 3 title-only matches. Defaults to flag for review and never auto-deletes.")]
     public Tier3Action Tier3Action { get; set; }
 
-    [FieldDefinition(3, Label = "Scan interval (minutes)", Type = FieldType.Number, HelpText = "How often to run automatic scan. Minimum 60 minutes. Defaults to 1440 (24 hours).")]
+    [FieldDefinition(3, Label = "Scan interval (minutes)", Type = FieldType.Number, HelpText = "How often to run automatic scan. Only read from the UniqueSingles Scan entry under Settings > Metadata; ignored on the Connect entry. Minimum 60 minutes. Defaults to 1440 (24 hours).")]
     public int ScanIntervalMinutes { get; set; }
 
     /// <summary>
