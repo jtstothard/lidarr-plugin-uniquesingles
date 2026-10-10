@@ -26,6 +26,14 @@ public class SingleCleanupService : ISingleCleanupService
 {
     private static readonly StringComparer AlbumTypeComparer = StringComparer.OrdinalIgnoreCase;
 
+    private static readonly HashSet<int> ExcludedSecondaryTypeIds = new()
+    {
+        SecondaryAlbumType.Live.Id,
+        SecondaryAlbumType.Remix.Id,
+        SecondaryAlbumType.DJMix.Id,
+        SecondaryAlbumType.Demo.Id,
+    };
+
     private readonly IAlbumService _albumService;
     private readonly ITrackService _trackService;
     private readonly IMediaFileService _mediaFileService;
@@ -477,6 +485,16 @@ public class SingleCleanupService : ISingleCleanupService
 
         foreach (var album in albums.Where(a => options.ShouldCompareAgainstType(a.AlbumType)).Where(a => a.Monitored))
         {
+            if (HasExcludedSecondaryType(album))
+            {
+                _logger.Debug(
+                    "UniqueSingles comparison skip: album has an excluded secondary type. albumId={0} album='{1}' secondaryTypes='{2}' reason=excluded-secondary-type",
+                    album.Id,
+                    album.Title,
+                    string.Join(",", album.SecondaryTypes.Select(t => t.Name)));
+                continue;
+            }
+
             try
             {
                 var albumTracks = _trackService.GetTracksByAlbum(album.Id) ?? new List<Track>();
@@ -654,6 +672,17 @@ public class SingleCleanupService : ISingleCleanupService
             3000,
             new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" },
             Tier3Action.FlagOnly);
+    }
+
+    /// <summary>
+    /// Releases whose tracks are usually different recordings that share the studio title
+    /// (live, remix, DJ-mix, demo). A title + duration match against them is not evidence
+    /// that the single is redundant, so they are never used as comparison sources.
+    /// Lidarr stores these as secondary types; the primary type is still "Album" or "EP".
+    /// </summary>
+    private static bool HasExcludedSecondaryType(Album album)
+    {
+        return album.SecondaryTypes != null && album.SecondaryTypes.Any(t => ExcludedSecondaryTypeIds.Contains(t.Id));
     }
 
     private static bool IsSingle(Album album)
