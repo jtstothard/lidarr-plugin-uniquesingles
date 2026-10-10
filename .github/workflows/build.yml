@@ -44,7 +44,7 @@ jobs:
       - name: Build
         run: |
           dotnet restore UniqueSingles.sln /p:WarningsNotAsErrors="NU1902"
-          dotnet build UniqueSingles.sln -c Release /p:WarningsNotAsErrors="NU1902"
+          dotnet build UniqueSingles.sln -c Release /p:WarningsNotAsErrors="NU1902" /p:PluginVersion=${PLUGIN_VERSION}
 
       - name: Test
         run: |
