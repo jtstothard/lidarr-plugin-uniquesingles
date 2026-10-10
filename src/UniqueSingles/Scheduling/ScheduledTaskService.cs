@@ -52,6 +52,13 @@ namespace NzbDrone.Core.Plugins.Scheduling
             var provider = _metadataFactory.GetInstance((MetadataDefinition)message.Definition);
             if (provider is IProvideScheduledTask scheduledTaskProvider)
             {
+                if (!message.Definition.Enable)
+                {
+                    _logger.Debug("ProviderAdded: {0} is disabled, not registering scheduled task", scheduledTaskProvider.CommandType.Name);
+                    CleanupOrphanedTasks();
+                    return;
+                }
+
                 _logger.Debug("ProviderAdded: registering scheduled task for {0}", scheduledTaskProvider.CommandType.Name);
                 RegisterTask(scheduledTaskProvider);
             }
@@ -64,6 +71,13 @@ namespace NzbDrone.Core.Plugins.Scheduling
             var provider = _metadataFactory.GetInstance((MetadataDefinition)message.Definition);
             if (provider is IProvideScheduledTask scheduledTaskProvider)
             {
+                if (!message.Definition.Enable)
+                {
+                    _logger.Debug("ProviderUpdated: {0} is disabled, removing scheduled task", scheduledTaskProvider.CommandType.Name);
+                    CleanupOrphanedTasks();
+                    return;
+                }
+
                 _logger.Debug("ProviderUpdated: updating scheduled task for {0}", scheduledTaskProvider.CommandType.Name);
                 UpdateTask(scheduledTaskProvider);
             }
@@ -79,12 +93,14 @@ namespace NzbDrone.Core.Plugins.Scheduling
         }
 
         /// <summary>
-        /// Called at startup to ensure all IProvideScheduledTask providers have
+        /// Called at startup to ensure all enabled IProvideScheduledTask providers have
         /// ScheduledTask rows. Idempotent — skips rows that already exist.
+        /// Lidarr creates a disabled definition for every metadata provider automatically,
+        /// so only providers the user has enabled under Settings > Metadata are scheduled.
         /// </summary>
         public void InitializeTasks()
         {
-            var providers = _metadataFactory.GetAvailableProviders()
+            var providers = _metadataFactory.Enabled()
                 .OfType<IProvideScheduledTask>()
                 .ToList();
 
@@ -174,17 +190,24 @@ namespace NzbDrone.Core.Plugins.Scheduling
         }
 
         /// <summary>
-        /// Removes ScheduledTask rows for command types that were previously registered
-        /// by this service but no longer have a corresponding IProvideScheduledTask provider.
+        /// Removes ScheduledTask rows for command types that no longer have an enabled
+        /// IProvideScheduledTask provider. Candidates are the types registered by this
+        /// service plus the types of every available provider, so rows persisted by an
+        /// earlier run are removed once their provider is disabled.
         /// </summary>
         private void CleanupOrphanedTasks()
         {
-            var activeCommandTypes = _metadataFactory.GetAvailableProviders()
+            var activeCommandTypes = _metadataFactory.Enabled()
                 .OfType<IProvideScheduledTask>()
                 .Select(p => p.CommandType.FullName!)
                 .ToHashSet();
 
+            var knownCommandTypes = _metadataFactory.GetAvailableProviders()
+                .OfType<IProvideScheduledTask>()
+                .Select(p => p.CommandType.FullName!);
+
             var orphaned = _registeredCommandTypes
+                .Union(knownCommandTypes)
                 .Where(registered => !activeCommandTypes.Contains(registered))
                 .ToList();
 
@@ -194,10 +217,12 @@ namespace NzbDrone.Core.Plugins.Scheduling
                 if (task != null)
                 {
                     _scheduledTaskRepository.Delete(task.Id);
-                    _cache.Remove(typeName);
                     _logger.Info("Removed orphaned scheduled task: {0}", typeName);
                 }
 
+                // The TaskManager cache can hold the task even when its row is gone,
+                // and the Scheduler reads pending tasks from the cache.
+                _cache.Remove(typeName);
                 _registeredCommandTypes.Remove(typeName);
             }
         }

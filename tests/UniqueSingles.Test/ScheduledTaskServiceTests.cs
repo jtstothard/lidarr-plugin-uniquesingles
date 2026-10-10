@@ -34,7 +34,7 @@ public class ScheduledTaskServiceTests
         using var logger = new TestLogger();
 
         var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
-        var definition = new MetadataDefinition { Id = 1 };
+        var definition = new MetadataDefinition { Id = 1, Enable = true };
         var evt = new ProviderAddedEvent<IMetadata>(definition);
 
         service.Handle(evt);
@@ -53,7 +53,7 @@ public class ScheduledTaskServiceTests
         using var logger = new TestLogger();
 
         var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
-        var definition = new MetadataDefinition { Id = 1 };
+        var definition = new MetadataDefinition { Id = 1, Enable = true };
         var evt = new ProviderAddedEvent<IMetadata>(definition);
 
         service.Handle(evt);
@@ -87,7 +87,7 @@ public class ScheduledTaskServiceTests
         repo.AllTasks.Add(existing);
 
         var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
-        var definition = new MetadataDefinition { Id = 1 };
+        var definition = new MetadataDefinition { Id = 1, Enable = true };
         service.Handle(new ProviderAddedEvent<IMetadata>(definition));
 
         // Should update, not insert
@@ -117,7 +117,7 @@ public class ScheduledTaskServiceTests
         repo.AllTasks.Add(existing);
 
         var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
-        var definition = new MetadataDefinition { Id = 1 };
+        var definition = new MetadataDefinition { Id = 1, Enable = true };
         service.Handle(new ProviderUpdatedEvent<IMetadata>(definition));
 
         Assert.Empty(repo.InsertedTasks);
@@ -136,7 +136,7 @@ public class ScheduledTaskServiceTests
         using var logger = new TestLogger();
 
         var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
-        var definition = new MetadataDefinition { Id = 1 };
+        var definition = new MetadataDefinition { Id = 1, Enable = true };
         service.Handle(new ProviderUpdatedEvent<IMetadata>(definition));
 
         Assert.Empty(repo.InsertedTasks);
@@ -155,7 +155,7 @@ public class ScheduledTaskServiceTests
 
         // Register a task first
         var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
-        var definition = new MetadataDefinition { Id = 1 };
+        var definition = new MetadataDefinition { Id = 1, Enable = true };
         service.Handle(new ProviderAddedEvent<IMetadata>(definition));
         Assert.Single(repo.InsertedTasks);
 
@@ -219,6 +219,88 @@ public class ScheduledTaskServiceTests
         // Good provider should still be registered despite failing one
         Assert.Single(repo.InsertedTasks);
         Assert.True(logger.HasMessageContaining("Failed to register scheduled task"));
+    }
+
+    // ── Enable flag (opt-in) ──────────────────────────────────────────
+
+    [Fact]
+    public void InitializeTasks_DisabledProvider_DoesNotRegisterTask()
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 1440, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider) { EnabledProviders = new List<IMetadata>() };
+        var repo = new StubScheduledTaskRepository();
+        var cache = new CacheManager();
+        using var logger = new TestLogger();
+
+        var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
+        service.InitializeTasks();
+
+        Assert.Empty(repo.InsertedTasks);
+    }
+
+    [Fact]
+    public void InitializeTasks_DisabledProvider_RemovesPersistedTask()
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 1440, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider) { EnabledProviders = new List<IMetadata>() };
+        var repo = new StubScheduledTaskRepository();
+        var cache = new CacheManager();
+        using var logger = new TestLogger();
+
+        // Row left behind by an earlier version that scheduled the scan unconditionally
+        repo.AllTasks.Add(new ScheduledTask
+        {
+            Id = 5,
+            TypeName = typeof(UniqueSinglesScanCommand).FullName!,
+            Interval = 1440,
+            Priority = CommandPriority.Low
+        });
+
+        var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
+        service.InitializeTasks();
+
+        Assert.Single(repo.DeletedTasks);
+        Assert.Empty(repo.AllTasks);
+    }
+
+    [Fact]
+    public void Handle_ProviderAdded_DisabledDefinition_DoesNotInsertTask()
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 120, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider) { EnabledProviders = new List<IMetadata>() };
+        var repo = new StubScheduledTaskRepository();
+        var cache = new CacheManager();
+        using var logger = new TestLogger();
+
+        var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
+        service.Handle(new ProviderAddedEvent<IMetadata>(new MetadataDefinition { Id = 1, Enable = false }));
+
+        Assert.Empty(repo.InsertedTasks);
+    }
+
+    [Fact]
+    public void Handle_ProviderUpdated_Disabled_RemovesTask()
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 120, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider);
+        var repo = new StubScheduledTaskRepository();
+        var cache = new CacheManager();
+        using var logger = new TestLogger();
+
+        var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
+        service.Handle(new ProviderAddedEvent<IMetadata>(new MetadataDefinition { Id = 1, Enable = true }));
+        Assert.Single(repo.AllTasks);
+
+        // User unticks Enable under Settings > Metadata
+        factory.EnabledProviders = new List<IMetadata>();
+        service.Handle(new ProviderUpdatedEvent<IMetadata>(new MetadataDefinition { Id = 1, Enable = false }));
+
+        Assert.Single(repo.DeletedTasks);
+        Assert.Empty(repo.AllTasks);
     }
 
     // ── Stub implementations ──────────────────────────────────────────
@@ -307,6 +389,11 @@ public class ScheduledTaskServiceTests
     {
         public List<IMetadata> Providers;
 
+        /// <summary>
+        /// Providers reported as enabled. When null, every provider is treated as enabled.
+        /// </summary>
+        public List<IMetadata>? EnabledProviders;
+
         public StubMetadataFactory(params IMetadata[] providers)
         {
             Providers = providers.ToList();
@@ -331,7 +418,7 @@ public class ScheduledTaskServiceTests
         public FluentValidation.Results.ValidationResult Test(MetadataDefinition definition) => new();
         public object RequestAction(MetadataDefinition definition, string action, IDictionary<string, string> query) => new();
         public List<MetadataDefinition> AllForTag(int tagId) => new();
-        public List<IMetadata> Enabled() => Providers;
+        public List<IMetadata> Enabled() => EnabledProviders ?? Providers;
     }
 
     private sealed class StubScheduledTaskRepository : IScheduledTaskRepository
