@@ -22,6 +22,7 @@ All notable changes to Unique Singles will be documented in this file.
 - The scheduled full-library scan only runs when **UniqueSingles Scan** is enabled under Settings → Metadata. Previously it was scheduled on every install, and disabling or removing the Metadata entry did not stop it.
 - Albums and EPs with a Live, Remix, DJ-mix, or Demo secondary type are no longer used as comparison sources. A live track with the same title and a similar length could previously cause the studio single to be deleted.
 
+- Documented that **Scan interval** is only read from the Metadata entry, that the scheduled scan uses the Connect entry's matching settings, and that singles without files are unmonitored on exact Tier 1 matches.
 - Build against checksum-pinned official Lidarr binaries instead of recompiling its source and dependency tree.
 
 ## [1.0.2] - 2025-05-28
