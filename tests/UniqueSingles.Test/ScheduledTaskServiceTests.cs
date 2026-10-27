@@ -490,6 +490,72 @@ public class ScheduledTaskServiceTests
 
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void HostLifecycle_RealContainerAndEvents_PreservesEnabledScheduleOnly(bool enabled)
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 1440, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider);
+        if (!enabled) factory.EnabledProviders = new List<IMetadata>();
+        var repo = new StubScheduledTaskRepository();
+        var cache = new CacheManager();
+        using var logger = new TestLogger();
+        var lastRun = DateTime.UtcNow.AddHours(-1);
+        var typeName = typeof(UniqueSinglesScanCommand).FullName!;
+        repo.AllTasks.Add(new ScheduledTask
+        {
+            Id = 7, TypeName = typeName, Interval = 1440,
+            LastExecution = lastRun, LastStartTime = lastRun
+        });
+
+        using var container = new Container(rules => rules.WithNzbDroneRules());
+        // Same reuse rules as Lidarr's AutoAddServices, restricted to these three
+        // implementations so the test cannot start unrelated host services.
+        var types = new[] { typeof(ScheduledTaskServiceStarter), typeof(ScheduledTaskService), typeof(TaskManager) };
+        container.RegisterMany(types, serviceTypeCondition: t => t.IsInterface && !t.FullName!.StartsWith("System"), reuse: Reuse.Singleton);
+        container.RegisterMany(types, serviceTypeCondition: t => !t.IsInterface && !t.FullName!.StartsWith("System"), reuse: Reuse.Transient);
+        container.RegisterInstance<IMetadataFactory>(factory);
+        container.RegisterInstance<IScheduledTaskRepository>(repo);
+        container.RegisterInstance<ICacheManager>(cache);
+        container.RegisterInstance<NzbDrone.Core.Configuration.IConfigService>(
+            DispatchProxy.Create<NzbDrone.Core.Configuration.IConfigService, ScheduleConfigProxy>());
+        container.RegisterInstance(logger.Logger);
+        var services = new NzbDrone.Common.ServiceFactory(container.GetServiceProvider());
+        var starting = services.BuildAll<IHandle<NzbDrone.Core.Lifecycle.ApplicationStartingEvent>>()
+            .OfType<ScheduledTaskServiceStarter>().Single();
+        var started = services.BuildAll<IHandle<NzbDrone.Core.Lifecycle.ApplicationStartedEvent>>()
+            .OfType<ScheduledTaskServiceStarter>().Single();
+        Assert.Same(starting, started);
+        var events = new EventAggregator(logger.Logger, services);
+
+        events.PublishEvent(new NzbDrone.Core.Lifecycle.ApplicationStartingEvent());
+        events.PublishEvent(new NzbDrone.Core.Lifecycle.ApplicationStartedEvent());
+
+        var taskManager = services.BuildAll<NzbDrone.Core.Jobs.ITaskManager>().Single();
+        Assert.DoesNotContain(taskManager.GetPending(), t => t.TypeName == typeName);
+        if (enabled)
+        {
+            var restored = Assert.Single(repo.AllTasks, t => t.TypeName == typeName);
+            Assert.Equal(lastRun, restored.LastExecution);
+            Assert.Equal(lastRun, restored.LastStartTime);
+            var commandStart = DateTime.UtcNow.AddSeconds(-1);
+            events.PublishEvent(new CommandExecutedEvent(new CommandModel
+            {
+                Body = new UniqueSinglesScanCommand(), StartedAt = commandStart
+            }));
+            Assert.True(restored.LastExecution > lastRun);
+            Assert.Equal(commandStart, restored.LastStartTime);
+            Assert.DoesNotContain(taskManager.GetPending(), t => t.TypeName == typeName);
+        }
+        else
+        {
+            Assert.DoesNotContain(repo.AllTasks, t => t.TypeName == typeName);
+            Assert.DoesNotContain(taskManager.GetAll(), t => t.TypeName == typeName);
+        }
+    }
+
     public class ScheduleConfigProxy : DispatchProxy
     {
         protected override object? Invoke(MethodInfo? method, object?[]? args)
