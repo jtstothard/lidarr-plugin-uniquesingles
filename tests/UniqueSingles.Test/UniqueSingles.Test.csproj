@@ -35,4 +35,9 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <Import Project="../../LidarrReferences.targets" />
+  <!-- Exercise the host container registration and lifecycle dispatch using pinned binaries. -->
+  <ItemGroup>
+    <Reference Include="DryIoc" HintPath="$(LidarrReferenceDir)/DryIoc.dll" />
+    <Reference Include="DryIoc.Microsoft.DependencyInjection" HintPath="$(LidarrReferenceDir)/DryIoc.Microsoft.DependencyInjection.dll" />
+  </ItemGroup>
 </Project>

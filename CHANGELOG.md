@@ -11,6 +11,10 @@ All notable changes to Unique Singles will be documented in this file.
 - Dependabot config for NuGet and GitHub Actions dependencies
 - CodeQL security scanning workflow
 
+### Fixed
+
+- The scheduled scan no longer runs on every Lidarr restart. Lidarr removes plugin task rows at startup; the plugin now restores the previous run time instead of scheduling the scan as overdue.
+
 ### Changed
 
 - The scheduled full-library scan only runs when **UniqueSingles Scan** is enabled under Settings → Metadata. Previously it was scheduled on every install, and disabling or removing the Metadata entry did not stop it.

@@ -1,6 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using DryIoc;
+using DryIoc.Microsoft.DependencyInjection;
+using NzbDrone.Common.Composition.Extensions;
+using NzbDrone.Core.Messaging.Events;
 using NLog;
 using NLog.Config;
 using NLog.Targets;
@@ -348,6 +353,154 @@ public class ScheduledTaskServiceTests
         Assert.Empty(taskManager.GetPending());
         Assert.Empty(repo.AllTasks);
         Assert.Empty(repo.InsertedTasks);
+    }
+
+    // ── Restart handling ──────────────────────────────────────────────
+
+    [Fact]
+    public void InitializeTasks_AfterTaskManagerRemovedRow_KeepsCapturedLastExecution()
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 1440, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider);
+        var repo = new StubScheduledTaskRepository();
+        var cache = new CacheManager();
+        using var logger = new TestLogger();
+
+        var lastRun = DateTime.UtcNow.AddHours(-1);
+        repo.AllTasks.Add(new ScheduledTask
+        {
+            Id = 7,
+            TypeName = typeof(UniqueSinglesScanCommand).FullName!,
+            Interval = 1440,
+            Priority = CommandPriority.Low,
+            LastExecution = lastRun,
+            LastStartTime = lastRun
+        });
+
+        var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
+
+        // ApplicationStartingEvent
+        service.CaptureExistingTasks();
+
+        // TaskManager handles ApplicationStartedEvent and deletes non-built-in rows
+        repo.AllTasks.Clear();
+
+        // Plugin handles ApplicationStartedEvent last
+        service.InitializeTasks();
+
+        Assert.Single(repo.InsertedTasks);
+        Assert.Equal(lastRun, repo.InsertedTasks[0].LastExecution);
+        Assert.Equal(lastRun, repo.InsertedTasks[0].LastStartTime);
+    }
+
+    [Fact]
+    public void InitializeTasks_NoCapturedRow_IsDueImmediately()
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 1440, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider);
+        var repo = new StubScheduledTaskRepository();
+        var cache = new CacheManager();
+        using var logger = new TestLogger();
+
+        var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
+        service.CaptureExistingTasks();
+        service.InitializeTasks();
+
+        Assert.Single(repo.InsertedTasks);
+        Assert.True(DateTime.UtcNow - repo.InsertedTasks[0].LastExecution >= TimeSpan.FromMinutes(1440));
+    }
+
+    [Fact]
+    public void Starter_HandlesApplicationStartedAfterTaskManager()
+    {
+        var method = typeof(ScheduledTaskServiceStarter).GetMethod(
+            nameof(ScheduledTaskServiceStarter.Handle),
+            new[] { typeof(NzbDrone.Core.Lifecycle.ApplicationStartedEvent) });
+
+        var attribute = method!
+            .GetCustomAttributes(typeof(NzbDrone.Core.Messaging.EventHandleOrderAttribute), true)
+            .Cast<NzbDrone.Core.Messaging.EventHandleOrderAttribute>()
+            .SingleOrDefault();
+
+        Assert.NotNull(attribute);
+        Assert.Equal(NzbDrone.Core.Messaging.EventHandleOrder.Last, attribute!.EventHandleOrder);
+    }
+
+    [Fact]
+    public void HostLifecycle_RealContainerAndEvents_PreservesSchedule()
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 1440, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider);
+        var repo = new StubScheduledTaskRepository();
+        var cache = new CacheManager();
+        using var logger = new TestLogger();
+        var lastRun = DateTime.UtcNow.AddHours(-1);
+        var lastStart = lastRun.AddMinutes(-3);
+        var typeName = typeof(UniqueSinglesScanCommand).FullName!;
+        repo.AllTasks.Add(new ScheduledTask
+        {
+            Id = 7, TypeName = typeName, Interval = 1440,
+            LastExecution = lastRun, LastStartTime = lastStart
+        });
+
+        using var container = new Container(rules => rules.WithNzbDroneRules());
+        // Same reuse rules as Lidarr's AutoAddServices, restricted to these three
+        // implementations so the test cannot start unrelated host services.
+        var types = new[] { typeof(ScheduledTaskServiceStarter), typeof(ScheduledTaskService), typeof(TaskManager) };
+        container.RegisterMany(types, serviceTypeCondition: t => t.IsInterface && !t.FullName!.StartsWith("System"), reuse: Reuse.Singleton);
+        container.RegisterMany(types, serviceTypeCondition: t => !t.IsInterface && !t.FullName!.StartsWith("System"), reuse: Reuse.Transient);
+        container.RegisterInstance<IMetadataFactory>(factory);
+        container.RegisterInstance<IScheduledTaskRepository>(repo);
+        container.RegisterInstance<ICacheManager>(cache);
+        container.RegisterInstance<NzbDrone.Core.Configuration.IConfigService>(
+            DispatchProxy.Create<NzbDrone.Core.Configuration.IConfigService, ScheduleConfigProxy>());
+        container.RegisterInstance(logger.Logger);
+        var services = new NzbDrone.Common.ServiceFactory(container.GetServiceProvider());
+        var starting = services.BuildAll<IHandle<NzbDrone.Core.Lifecycle.ApplicationStartingEvent>>()
+            .OfType<ScheduledTaskServiceStarter>().Single();
+        var started = services.BuildAll<IHandle<NzbDrone.Core.Lifecycle.ApplicationStartedEvent>>()
+            .OfType<ScheduledTaskServiceStarter>().Single();
+        Assert.Same(starting, started);
+        var events = new EventAggregator(logger.Logger, services);
+
+        events.PublishEvent(new NzbDrone.Core.Lifecycle.ApplicationStartingEvent());
+        events.PublishEvent(new NzbDrone.Core.Lifecycle.ApplicationStartedEvent());
+
+        var taskManager = services.BuildAll<NzbDrone.Core.Jobs.ITaskManager>().Single();
+        Assert.DoesNotContain(taskManager.GetPending(), t => t.TypeName == typeName);
+        // Verify completion updates the restored row and the shared cache.
+        Assert.Contains(repo.DeletedTasks, t => t.Id == 7 && t.TypeName == typeName);
+        var restored = Assert.Single(repo.AllTasks, t => t.TypeName == typeName);
+        Assert.Contains(restored, repo.InsertedTasks);
+        Assert.NotEqual(7, restored.Id);
+        Assert.Equal(lastRun, restored.LastExecution);
+        Assert.Equal(lastStart, restored.LastStartTime);
+        Assert.Same(restored, Assert.Single(taskManager.GetAll(), t => t.TypeName == typeName));
+        var commandStart = DateTime.UtcNow.AddSeconds(-1);
+        events.PublishEvent(new CommandExecutedEvent(new CommandModel
+        {
+            Body = new UniqueSinglesScanCommand(), StartedAt = commandStart
+        }));
+        Assert.True(restored.LastExecution > lastRun);
+        Assert.Equal(commandStart, restored.LastStartTime);
+        Assert.DoesNotContain(taskManager.GetPending(), t => t.TypeName == typeName);
+
+    }
+
+    public class ScheduleConfigProxy : DispatchProxy
+    {
+        protected override object? Invoke(MethodInfo? method, object?[]? args)
+        {
+            return method!.Name switch
+            {
+                "get_BackupInterval" => 1,
+                "get_RssSyncInterval" => 60,
+                _ => throw new NotSupportedException(method.Name)
+            };
+        }
     }
 
     // ── Stub implementations ──────────────────────────────────────────
