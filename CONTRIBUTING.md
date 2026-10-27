@@ -4,27 +4,48 @@ Thanks for considering a contribution to Unique Singles.
 
 ## Getting Started
 
-This repo uses a git submodule pointing at Lidarr's source (`ext/Lidarr`), which the plugin builds against.
+Builds reference the official Lidarr 3.1.3.4968 binaries. Lidarr source submodules
+are retained for reference, but are not required for building or testing.
+Build hosts need Python 3.11+ and the .NET 8 SDK (CI uses 8.0.405). The preparation
+script supports Linux and macOS on x64 and arm64.
 
 ```bash
-git clone --recurse-submodules https://github.com/jtstothard/lidarr-plugin-uniquesingles.git
+git clone https://github.com/jtstothard/lidarr-plugin-uniquesingles.git
 cd lidarr-plugin-uniquesingles
-# If you already cloned without --recurse-submodules:
-git submodule update --init --recursive
+python3 scripts/prepare-lidarr.py
 ```
 
 ### Build
 
+The preparation script downloads a platform-specific archive, checks its pinned
+SHA-256 digest, and copies only top-level managed DLLs into the ignored
+`_temp/lidarr/3.1.3.4968` directory. Subsequent runs reverify the cached archive
+and replace the extracted references. No Lidarr process is installed or started.
+
 ```bash
 dotnet restore UniqueSingles.sln
-dotnet build UniqueSingles.sln -c Release
+dotnet build UniqueSingles.sln -c Release --no-restore
 ```
 
 ### Test
 
 ```bash
-dotnet test tests/UniqueSingles.Test/UniqueSingles.Test.csproj -c Release
+python3 -m unittest discover -s tests -p 'test_prepare_lidarr.py'
+dotnet test tests/UniqueSingles.Test/UniqueSingles.Test.csproj -c Release --no-build
 ```
+
+The plugin uses non-copying binary references; tests copy their Lidarr runtime
+dependencies into the test output and use the ASP.NET Core shared framework.
+The release ZIP contains only the plugin DLL and PDB, as before. Builds do not
+compile ImageSharp or run its license-key build target. This does not update
+Lidarr or its runtime dependencies on users' systems.
+
+When changing the supported Lidarr release, update the version/digests in
+`scripts/prepare-lidarr.py`, the path in `LidarrReferences.targets`, and the
+assembly-version guard in `AssemblySmokeTests.cs`. Verify the required plugin
+APIs and the full suite against the actual downloaded binaries. NuGet audit
+checks cover restored packages; they do not inventory the binaries in the
+downloaded Lidarr archive.
 
 ## Code Style
 
