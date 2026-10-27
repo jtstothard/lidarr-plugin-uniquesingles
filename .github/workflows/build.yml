@@ -41,9 +41,11 @@ jobs:
       - name: Build
         run: |
           dotnet restore UniqueSingles.sln
-          dotnet build UniqueSingles.sln -c Release --no-restore
+          dotnet build UniqueSingles.sln -c Release --no-restore /p:PluginVersion=${PLUGIN_VERSION}
 
       - name: Test
+        env:
+          EXPECTED_PLUGIN_VERSION: ${{ env.PLUGIN_VERSION }}
         run: |
           dotnet test tests/UniqueSingles.Test/UniqueSingles.Test.csproj -c Release --no-build --verbosity normal
 
