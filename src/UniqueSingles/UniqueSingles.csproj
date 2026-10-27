@@ -6,20 +6,13 @@
     <AssemblyName>Lidarr.Plugin.$(MSBuildProjectName)</AssemblyName>
     <Nullable>enable</Nullable>
     <Version Condition="'$(Version)' == ''">1.0.2</Version>
-    <!-- Disable analyzers inherited from Lidarr's Directory.Build.props -->
+    <!-- Preserve the plugin's existing analyzer settings. -->
     <EnableAnalyzers>false</EnableAnalyzers>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
-    <NoWarn>$(NoWarn);CS1591;NU1902</NoWarn>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\ext\Lidarr\src\NzbDrone.Core\Lidarr.Core.csproj">
-      <Private>false</Private>
-    </ProjectReference>
-    <ProjectReference Include="..\..\ext\Lidarr\src\NzbDrone.Common\Lidarr.Common.csproj">
-      <Private>false</Private>
-    </ProjectReference>
-  </ItemGroup>
+  <Import Project="../../LidarrReferences.targets" />
 
 </Project>
