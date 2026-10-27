@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <LidarrReferenceDir>$(MSBuildThisFileDirectory)_temp/lidarr/3.1.3.4968</LidarrReferenceDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(LidarrReferenceDir)/Lidarr.Core.dll;$(LidarrReferenceDir)/Lidarr.Common.dll;$(LidarrReferenceDir)/Lidarr.Http.dll;$(LidarrReferenceDir)/Lidarr.Api.V1.dll;$(LidarrReferenceDir)/NLog.dll;$(LidarrReferenceDir)/FluentValidation.dll;$(LidarrReferenceDir)/Newtonsoft.Json.dll;$(LidarrReferenceDir)/System.IO.Abstractions.dll">
+      <Private Condition="'$(IsTestProject)' == 'true'">true</Private>
+      <Private Condition="'$(IsTestProject)' != 'true'">false</Private>
+    </Reference>
+  </ItemGroup>
+  <Target Name="RequireLidarrReferences" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(LidarrReferenceDir)/Lidarr.Core.dll')" Text="Run python3 scripts/prepare-lidarr.py before building." />
+  </Target>
+</Project>
