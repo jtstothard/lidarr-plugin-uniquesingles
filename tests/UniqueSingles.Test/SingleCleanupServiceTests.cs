@@ -1359,4 +1359,81 @@ public class SingleCleanupServiceTests
         Assert.Single(deleteMediaFiles.DeletedFiles);
     }
 
+    // ============================================================
+    // Secondary album types
+    // ============================================================
+
+    [Theory]
+    [InlineData("Live", false, false)]
+    [InlineData("Live", false, true)]
+    [InlineData("Remix", false, false)]
+    [InlineData("Remix", false, true)]
+    [InlineData("DJ-mix", false, false)]
+    [InlineData("DJ-mix", false, true)]
+    [InlineData("Demo", false, false)]
+    [InlineData("Demo", false, true)]
+    [InlineData("Live", true, false)]
+    [InlineData("Live", true, true)]
+    [InlineData("Remix", true, false)]
+    [InlineData("Remix", true, true)]
+    [InlineData("DJ-mix", true, false)]
+    [InlineData("DJ-mix", true, true)]
+    [InlineData("Demo", true, false)]
+    [InlineData("Demo", true, true)]
+    public void Cleanup_ExcludedSecondaryTypeMatch_DoesNotCleanSingle(string secondaryType, bool viaImport, bool exactMbid)
+    {
+        var artist = Artist();
+        var liveAlbum = Album(100, "Live at the Venue", "Album");
+        liveAlbum.SecondaryTypes = new List<SecondaryAlbumType> { (SecondaryAlbumType)secondaryType };
+        var single = Album(200, "Song", "Single");
+        var albumService = new RecordingAlbumService(liveAlbum, single);
+
+        // Exact recording IDs are deliberately excluded too, alongside title/duration matches.
+        var trackService = new RecordingTrackService()
+            .WithTracks(liveAlbum.Id, Track("Song", 181000, exactMbid ? "studio-mbid" : "live-mbid", fileId: 11))
+            .WithTracks(single.Id, Track("Song", 180000, "studio-mbid", fileId: 21));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(21, single.Id, "/music/single/song.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.FlagOnly);
+
+        var result = viaImport
+            ? service.CleanupWithOptions(artist, liveAlbum, options)
+            : service.ScanArtistWithOptions(artist, options);
+
+        Assert.Equal(0, result.Cleaned);
+        Assert.Empty(albumService.SetMonitoredCalls);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Cleanup_CompilationAlbumMbidMatch_StillCleansSingle(bool viaImport)
+    {
+        var artist = Artist();
+        var compilation = Album(100, "Greatest Hits", "Album");
+        compilation.SecondaryTypes = new List<SecondaryAlbumType> { SecondaryAlbumType.Compilation };
+        var single = Album(200, "Song", "Single");
+        var albumService = new RecordingAlbumService(compilation, single);
+
+        var trackService = new RecordingTrackService()
+            .WithTracks(compilation.Id, Track("Song", 180000, "shared-mbid", fileId: 11))
+            .WithTracks(single.Id, Track("Song", 180000, "shared-mbid", fileId: 21));
+
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(21, single.Id, "/music/single/song.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.FlagOnly);
+
+        var result = viaImport
+            ? service.CleanupWithOptions(artist, compilation, options)
+            : service.ScanArtistWithOptions(artist, options);
+
+        Assert.Equal(1, result.Cleaned);
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
+    }
 }
