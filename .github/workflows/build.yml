@@ -18,7 +18,6 @@ env:
   PLUGIN_NAME: Lidarr.Plugin.UniqueSingles
   PLUGIN_VERSION: 1.0.2.${{ github.run_number }}
   DOTNET_VERSION: 8.0.405
-  LIDARR_VERSION: 3.1.3.4968
 
 jobs:
   build:
@@ -27,7 +26,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          submodules: true
           fetch-depth: 0
 
       - name: Setup .NET
@@ -35,16 +33,15 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Pin Lidarr assembly version
+      - name: Prepare pinned Lidarr binaries
         run: |
-          props=ext/Lidarr/src/Directory.Build.props
-          sed -i -E "s#<AssemblyVersion>[0-9.*]+</AssemblyVersion>#<AssemblyVersion>${LIDARR_VERSION}</AssemblyVersion>#" "$props"
-          grep "<AssemblyVersion>${LIDARR_VERSION}</AssemblyVersion>" "$props"
+          python3 -m unittest discover -s tests -p 'test_prepare_lidarr.py'
+          python3 scripts/prepare-lidarr.py
 
       - name: Build
         run: |
-          dotnet restore UniqueSingles.sln /p:WarningsNotAsErrors="NU1902"
-          dotnet build UniqueSingles.sln -c Release /p:WarningsNotAsErrors="NU1902"
+          dotnet restore UniqueSingles.sln
+          dotnet build UniqueSingles.sln -c Release --no-restore
 
       - name: Test
         run: |
