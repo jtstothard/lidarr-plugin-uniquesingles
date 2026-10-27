@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NLog;
+using NzbDrone.Core.Extras.Metadata;
 using NzbDrone.Core.Messaging.Commands;
 using NzbDrone.Core.Music;
 using NzbDrone.Core.Notifications;
@@ -24,6 +25,7 @@ namespace NzbDrone.Core.Plugins
         private readonly IArtistService _artistService;
         private readonly Logger _logger;
         private readonly Lazy<INotificationFactory> _notificationFactory;
+        private readonly Lazy<IMetadataFactory> _metadataFactory;
 
         /// <summary>
         /// INotificationFactory is resolved lazily to avoid a DryIoc recursive dependency at startup.
@@ -36,11 +38,13 @@ namespace NzbDrone.Core.Plugins
             ISingleCleanupService cleanupService,
             IArtistService artistService,
             Lazy<INotificationFactory> notificationFactory,
+            Lazy<IMetadataFactory> metadataFactory,
             Logger logger)
         {
             _cleanupService = cleanupService ?? throw new ArgumentNullException(nameof(cleanupService));
             _artistService = artistService ?? throw new ArgumentNullException(nameof(artistService));
             _notificationFactory = notificationFactory ?? throw new ArgumentNullException(nameof(notificationFactory));
+            _metadataFactory = metadataFactory ?? throw new ArgumentNullException(nameof(metadataFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -118,10 +122,25 @@ namespace NzbDrone.Core.Plugins
                 _logger.Warn(ex, "UniqueSingles scan: failed to resolve notification settings, falling back");
             }
 
-            if (Settings != null)
+            // CommandExecutor resolves an unbound handler, unlike the metadata provider factory.
+            // Read its persisted definition rather than dereferencing MetadataBase.Settings.
+            try
             {
-                _logger.Info("UniqueSingles scan: using metadata provider settings (no notification found)");
-                return Settings.ToCleanupOptions();
+                var settings = Definition?.Settings as UniqueSinglesSettings
+                    ?? _metadataFactory.Value.All()
+                        .Where(d => d.Implementation == nameof(UniqueSinglesScanTask))
+                        .Select(d => d.Settings)
+                        .OfType<UniqueSinglesSettings>()
+                        .FirstOrDefault();
+                if (settings != null)
+                {
+                    _logger.Info("UniqueSingles scan: using metadata provider settings (no notification found)");
+                    return settings.ToCleanupOptions();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn(ex, "UniqueSingles scan: failed to resolve metadata settings, using defaults");
             }
 
             _logger.Info("UniqueSingles scan: using default settings (no notification or metadata provider settings)");

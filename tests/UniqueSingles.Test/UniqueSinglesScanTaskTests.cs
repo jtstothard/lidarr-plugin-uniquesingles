@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using NzbDrone.Core.Extras.Metadata;
 using NLog;
 using NLog.Config;
 using NLog.Targets;
@@ -218,6 +220,41 @@ public class UniqueSinglesScanTaskTests
     }
 
     [Fact]
+    public void Execute_UnboundCommandHandler_UsesDefaultsWithoutThrowing()
+    {
+        var cleanup = new StubCleanupService();
+        var task = CreateTask(cleanup, new StubArtistService(new List<Artist> { MonitoredArtist(1, "Artist") }));
+        task.Definition = null!;
+
+        task.Execute(new UniqueSinglesScanCommand());
+
+        Assert.Single(cleanup.ScannedArtists);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Execute_UnboundCommandHandler_ResolvesPersistedSettingsWithConnectPriority(bool hasConnect)
+    {
+        var cleanup = new StubCleanupService();
+        var notifications = new StubNotificationFactory(hasConnect
+            ? new List<NotificationDefinition> { new() { Settings = new UniqueSinglesSettings { DurationToleranceMs = 7000 } } }
+            : new List<NotificationDefinition>());
+        var definitions = new List<MetadataDefinition>
+        {
+            new() { Implementation = "OtherProvider", Settings = new UniqueSinglesSettings { DurationToleranceMs = 9000 } },
+            new() { Implementation = nameof(UniqueSinglesScanTask), Settings = new UniqueSinglesSettings { DurationToleranceMs = 5000 } }
+        };
+        var task = CreateTask(cleanup, new StubArtistService(new List<Artist> { MonitoredArtist(1, "Artist") }),
+            notificationFactory: notifications, metadataDefinitions: definitions);
+        task.Definition = null!;
+
+        task.Execute(new UniqueSinglesScanCommand());
+
+        Assert.Equal(hasConnect ? 7000 : 5000, cleanup.LastOptions!.DurationToleranceMs);
+    }
+
+    [Fact]
     public void ResolveCleanupOptions_FallsBackToDefaults_WhenNoSettingsAtAll()
     {
         // Arrange: no notifications, no metadata provider settings
@@ -345,17 +382,31 @@ public class UniqueSinglesScanTaskTests
         StubCleanupService cleanupService,
         StubArtistService artistService,
         Logger? logger = null,
-        INotificationFactory? notificationFactory = null)
+        INotificationFactory? notificationFactory = null,
+        List<MetadataDefinition>? metadataDefinitions = null)
     {
         var log = logger ?? new TestLogger().Logger;
         var factory = notificationFactory ?? new StubNotificationFactory();
-        var task = new UniqueSinglesScanTask(cleanupService, artistService, new Lazy<INotificationFactory>(() => factory), log);
+        var metadataFactory = DispatchProxy.Create<IMetadataFactory, MetadataFactoryProxy>();
+        ((MetadataFactoryProxy)(object)metadataFactory).Definitions = metadataDefinitions ?? new();
+        var task = new UniqueSinglesScanTask(cleanupService, artistService,
+            new Lazy<INotificationFactory>(() => factory), new Lazy<IMetadataFactory>(() => metadataFactory), log);
         // Provider infrastructure sets Definition before use; replicate in tests
         task.Definition = new NzbDrone.Core.Extras.Metadata.MetadataDefinition
         {
             Settings = new UniqueSinglesSettings()
         };
         return task;
+    }
+
+    public class MetadataFactoryProxy : DispatchProxy
+    {
+        public List<MetadataDefinition> Definitions { get; set; } = new();
+
+        protected override object? Invoke(MethodInfo? method, object?[]? args)
+        {
+            return method!.Name == "All" ? Definitions : throw new NotSupportedException(method.Name);
+        }
     }
 
     private static Artist MonitoredArtist(int id, string name) => new()
@@ -406,11 +457,13 @@ public class UniqueSinglesScanTaskTests
     internal sealed class StubCleanupService : ISingleCleanupService
     {
         public List<Artist> ScannedArtists { get; } = new();
+        public SingleCleanupOptions? LastOptions { get; private set; }
         public HashSet<int> ThrowingArtistIds { get; } = new();
         public Dictionary<int, CleanupResult> Results { get; } = new();
 
         public CleanupResult ScanArtistWithOptions(Artist artist, SingleCleanupOptions options)
         {
+            LastOptions = options;
             ScannedArtists.Add(artist);
             if (ThrowingArtistIds.Contains(artist.Id))
             {
