@@ -142,3 +142,43 @@ after the final check remain a race. Synchronous host entry points still do not
 supply dispatcher cancellation tokens. No performance benchmark is claimed.
 
 Tracker publication, issue closure, push and production deployment were not performed.
+
+## Spec #37 final review corrections: 2026-10-28
+
+Product commit `f8da0925293cd76452288ddf71e0817d21e03d39` includes integration
+`a7ed0cfee0f93eb666696d45d17a4925b557b13d` and baseline `1744be2`.
+Report-only exact verification now preserves the existing metadata Tier-3 AutoClean
+path when its metadata match requirements hold. It adds no cleanup authority.
+The cache uses one shared typed key constructor, and cleanup/duration setting
+summaries describe their respective properties.
+
+TDD regression: scan, single-import and album-import each reached successful
+report-only exact verification but failed with cleaned=0 before the fix. All three
+pass afterward with checked=1, cleaned=1, skipped=0, review=0, report-only count=0,
+zero failures, one candidate deletion/unmonitor and the source retained. The report-only
+count describes releases reported without cleanup, so metadata cleanup is not also
+counted as a report-only outcome. Existing FlagOnly report-only preservation tests pass.
+
+The final full nonincremental Release build passed with six existing warnings,
+zero errors; all **251 C# tests** passed with zero failed/skipped, including archive
+identity/package checks. All **five Python preparation tests** and diff whitespace
+checks passed. Test receipt: `_temp/test-results/issue37-final.trx`.
+The build used the source tree subsequently committed unchanged as `f8da092`;
+source revision inclusion in assembly informational version is disabled by the project.
+
+The unchanged disposable runner completed successfully at `f8da092`; its
+[retained native receipt](issue-37-review-host.json) records exact command responses,
+host and decoder identities and restart scheduling evidence. Local full receipts/logs:
+`_temp/issue42-4440e0f6cf08447790345d0eea0cfd18/`.
+Tested DLL SHA-256:
+`02bf8a861e334b2742106d0433ea0d2713f8302cd9f1f0e8e8d1464fc943282d`.
+Release ZIP SHA-256:
+`298c90bce888a9f9dcb5c3024a5a05820beec403f6b5629eaa79eabe747d73aa`.
+Host archive and FFmpeg hashes match the qualification above. Every disposable host
+was stopped. Only generated synthetic library data was modified/deleted.
+
+This reruns the native scenarios above against the changed product artifact; the
+new AutoClean/report-only combination is proved at the three cleanup-service seams,
+not added to the native runner. The existing platform, native album-import,
+production, decoder/shared-library and race boundaries still apply. No push, PR,
+issue closure or production action was performed.
