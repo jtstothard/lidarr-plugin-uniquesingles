@@ -23,7 +23,8 @@ public readonly struct CleanupResult
     public int Skipped { get; }
 
     /// <summary>
-    /// Number of singles that have Tier 3 matches only and require manual review.
+    /// Number of unresolved singles requiring manual review, counted once per release.
+    /// Releases protected by an unmatched/exclusive track are excluded.
     /// </summary>
     public int ReviewNeeded { get; }
 

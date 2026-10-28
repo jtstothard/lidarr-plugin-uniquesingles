@@ -770,6 +770,145 @@ public class SingleCleanupServiceTests
         Assert.Contains(logger.InfoMessages, m => m.Contains("review-needed", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void Cleanup_ExclusiveContentTakesPrecedenceOverTitleOnlyReview(bool viaImport, bool duplicateAside)
+    {
+        using var audio = new SyntheticAudioFiles();
+        var sourcePath = audio.Create("source.wav");
+        var candidatePath = audio.Create("candidate.wav");
+        var artist = Artist();
+        var album = Album(100, "Retained album", "Album");
+        var single = Album(200, "A-side and exclusive B-side", "Single");
+        var albumService = new RecordingAlbumService(album, single);
+        var trackService = new RecordingTrackService()
+            .WithTracks(album.Id, Track("A-side", 220000, "album-a", 11))
+            .WithTracks(single.Id,
+                Track("A-side", duplicateAside ? 220000 : 180000, "single-a", 21),
+                Track("Exclusive B-side", 190000, "single-b", 22));
+        using var logger = new RecordingLogger();
+        var media = new RecordingMediaFileService()
+            .WithFiles(album.Id, File(11, album.Id, sourcePath))
+            .WithFiles(single.Id, File(21, single.Id, candidatePath));
+        var deletes = new RecordingDeleteMediaFiles { DeleteSyntheticFiles = true };
+        var service = Service(albumService, trackService, media, deletes, logger);
+        var options = new SingleCleanupOptions(3000, new HashSet<string> { "Album" }, Tier3Action.FlagOnly);
+
+        var result = viaImport
+            ? service.CleanupWithOptions(artist, album, options)
+            : service.ScanArtistWithOptions(artist, options);
+
+        Assert.Equal(1, result.CandidatesChecked);
+        Assert.Equal(1, result.Skipped);
+        Assert.Equal(0, result.ReviewNeeded);
+        Assert.Equal(0, result.Cleaned);
+        Assert.True(single.Monitored);
+        Assert.True(album.Monitored);
+        Assert.True(System.IO.File.Exists(sourcePath));
+        Assert.True(System.IO.File.Exists(candidatePath));
+        Assert.Empty(albumService.SetMonitoredCalls);
+        Assert.Empty(deletes.DeletedFiles);
+        Assert.Contains(logger.InfoMessages, m => m.Contains("keep-exclusive") && m.Contains("singleId=200"));
+        Assert.DoesNotContain(logger.InfoMessages, m => m.Contains("review-needed"));
+        Assert.Contains(logger.InfoMessages, m => m.Contains(duplicateAside ? "Tier2_TitleDuration" : "Tier3_TitleOnly") && m.Contains("A-side"));
+        Assert.Contains(logger.InfoMessages, m => m.Contains("Exclusive B-side") && m.Contains("NoMatch"));
+    }
+
+    [Theory]
+    [InlineData(false, 1, false)]
+    [InlineData(true, 1, false)]
+    [InlineData(false, 2, false)]
+    [InlineData(true, 2, false)]
+    [InlineData(false, 2, true)]
+    [InlineData(true, 2, true)]
+    public void Cleanup_FinalReleaseOutcomeAgreesWithCountsAndRetainsSource(bool viaImport, int trackCount, bool redundant)
+    {
+        using var audio = new SyntheticAudioFiles();
+        var artist = Artist();
+        var album = Album(100, "Retained album", "Album");
+        var single = Album(200, "Candidate", "Single");
+        var albums = new RecordingAlbumService(album, single);
+        var tracks = new RecordingTrackService();
+        var sourceTracks = new List<Track>();
+        var candidateTracks = new List<Track>();
+        var media = new RecordingMediaFileService();
+        var sourceFiles = new List<TrackFile>();
+        var candidateFiles = new List<TrackFile>();
+        for (var i = 0; i < trackCount; i++)
+        {
+            var source = Track($"Song {i}", 220000, $"source-{i}", 11 + i);
+            source.Id = 101 + i;
+            source.AlbumId = album.Id;
+            sourceTracks.Add(source);
+            var candidate = Track($"Song {i}", redundant ? 220000 : 180000, $"candidate-{i}", 21 + i);
+            candidate.Id = 201 + i;
+            candidate.AlbumId = single.Id;
+            candidateTracks.Add(candidate);
+            sourceFiles.Add(File(source.TrackFileId, album.Id, audio.Create($"source-{i}.wav")));
+            candidateFiles.Add(File(candidate.TrackFileId, single.Id, audio.Create($"candidate-{i}.wav")));
+        }
+
+        tracks.WithTracks(album.Id, sourceTracks.ToArray()).WithTracks(single.Id, candidateTracks.ToArray());
+        media.WithFiles(album.Id, sourceFiles.ToArray()).WithFiles(single.Id, candidateFiles.ToArray());
+        var deletes = new RecordingDeleteMediaFiles { DeleteSyntheticFiles = true };
+        using var logger = new RecordingLogger();
+        var service = Service(albums, tracks, media, deletes, logger);
+        var options = new SingleCleanupOptions(3000, new HashSet<string> { "Album" }, Tier3Action.FlagOnly);
+
+        var result = viaImport
+            ? service.CleanupWithOptions(artist, album, options)
+            : service.ScanArtistWithOptions(artist, options);
+
+        Assert.Equal(1, result.CandidatesChecked);
+        Assert.Equal(redundant ? 1 : 0, result.Cleaned);
+        Assert.Equal(redundant ? 0 : 1, result.Skipped);
+        Assert.Equal(redundant ? 0 : 1, result.ReviewNeeded);
+        Assert.Equal(!redundant, single.Monitored);
+        Assert.True(album.Monitored);
+        Assert.All(sourceFiles, f => Assert.True(System.IO.File.Exists(f.Path)));
+        Assert.All(candidateFiles, f => Assert.Equal(!redundant, System.IO.File.Exists(f.Path)));
+        Assert.Equal(redundant ? trackCount : 0, deletes.DeletedFiles.Count);
+        Assert.Equal(redundant ? 0 : 1, logger.InfoMessages.Count(m => m.Contains("review-needed")));
+        Assert.Contains(logger.InfoMessages, m => m.Contains(redundant ? "cleanup-approved" : "outcome=unresolved-review") && m.Contains("singleId=200"));
+        Assert.True(logger.InfoMessages.Any(m => m.Contains("trackId=201") && m.Contains("matchedAlbumId=100") && m.Contains("matchedTrackId=101")), string.Join("\n", logger.InfoMessages));
+    }
+
+    private sealed class SyntheticAudioFiles : IDisposable
+    {
+        private readonly string _directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "uniquesingles-" + Guid.NewGuid().ToString("N"));
+
+        public string Create(string name)
+        {
+            System.IO.Directory.CreateDirectory(_directory);
+            var path = System.IO.Path.Combine(_directory, name);
+            using var writer = new System.IO.BinaryWriter(System.IO.File.Create(path));
+            // Valid mono 16-bit PCM WAVE: 80 synthetic samples at 8 kHz.
+            writer.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+            writer.Write(196);
+            writer.Write(System.Text.Encoding.ASCII.GetBytes("WAVEfmt "));
+            writer.Write(16);
+            writer.Write((short)1);
+            writer.Write((short)1);
+            writer.Write(8000);
+            writer.Write(16000);
+            writer.Write((short)2);
+            writer.Write((short)16);
+            writer.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+            writer.Write(160);
+            for (var i = 0; i < 80; i++)
+            {
+                writer.Write((short)(i % 8 * 100));
+            }
+
+            return path;
+        }
+
+        public void Dispose() => System.IO.Directory.Delete(_directory, true);
+    }
+
     private static SingleCleanupService Service(
         RecordingAlbumService albumService,
         RecordingTrackService trackService,
@@ -1065,6 +1204,7 @@ public class SingleCleanupServiceTests
     private sealed class RecordingDeleteMediaFiles : IDeleteMediaFiles
     {
         public bool ThrowOnDelete { get; set; }
+        public bool DeleteSyntheticFiles { get; set; }
         public List<(Artist Artist, TrackFile TrackFile)> DeletedFiles { get; } = new();
 
         public void DeleteTrackFile(Artist artist, TrackFile trackFile)
@@ -1073,6 +1213,11 @@ public class SingleCleanupServiceTests
             if (ThrowOnDelete)
             {
                 throw new InvalidOperationException("delete failed");
+            }
+
+            if (DeleteSyntheticFiles)
+            {
+                System.IO.File.Delete(trackFile.Path);
             }
         }
 

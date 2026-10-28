@@ -13,6 +13,8 @@ All notable changes to Unique Singles will be documented in this file.
 
 ### Fixed
 
+- Scan/import outcomes now distinguish exclusive-content keeps from unresolved reviews. Exclusive tracks suppress release-level review flags; multiple title-only tracks count as one review, with track evidence retained.
+
 - Resolve scan settings for unbound command handlers, preventing a crash when no Connect entry exists and preserving Metadata settings fallback.
 
 - With `Single` in **Release types to compare**, every downloaded single matched its own tracks and was deleted. A single is now never compared against itself, and of two identical singles only one is removed.
