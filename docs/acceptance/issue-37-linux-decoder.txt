@@ -1,0 +1,453 @@
+ffmpeg	7:6.1.1-3ubuntu5
+libavcodec60:amd64	7:6.1.1-3ubuntu5
+libavformat60:amd64	7:6.1.1-3ubuntu5
+libavutil58:amd64	7:6.1.1-3ubuntu5
+libc6:amd64	2.39-0ubuntu8.9
+python3	3.12.3-0ubuntu2.1
+
+FFmpeg build/runtime dependencies:
+Python 3.12.3
+ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers
+built with gcc 13 (Ubuntu 13.2.0-23ubuntu3)
+configuration: --prefix=/usr --extra-version=3ubuntu5 --toolchain=hardened --libdir=/usr/lib/x86_64-linux-gnu --incdir=/usr/include/x86_64-linux-gnu --arch=amd64 --enable-gpl --disable-stripping --disable-omx --enable-gnutls --enable-libaom --enable-libass --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libcodec2 --enable-libdav1d --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libglslang --enable-libgme --enable-libgsm --enable-libharfbuzz --enable-libmp3lame --enable-libmysofa --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-librubberband --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libtheora --enable-libtwolame --enable-libvidstab --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx265 --enable-libxml2 --enable-libxvid --enable-libzimg --enable-openal --enable-opencl --enable-opengl --disable-sndio --enable-libvpl --disable-libmfx --enable-libdc1394 --enable-libdrm --enable-libiec61883 --enable-chromaprint --enable-frei0r --enable-ladspa --enable-libbluray --enable-libjack --enable-libpulse --enable-librabbitmq --enable-librist --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libx264 --enable-libzmq --enable-libzvbi --enable-lv2 --enable-sdl2 --enable-libplacebo --enable-librav1e --enable-pocketsphinx --enable-librsvg --enable-libjxl --enable-shared
+libavutil      58. 29.100 / 58. 29.100
+libavcodec     60. 31.102 / 60. 31.102
+libavformat    60. 16.100 / 60. 16.100
+libavdevice    60.  3.100 / 60.  3.100
+libavfilter     9. 12.100 /  9. 12.100
+libswscale      7.  5.100 /  7.  5.100
+libswresample   4. 12.100 /  4. 12.100
+libpostproc    57.  3.100 / 57.  3.100
+ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41  /usr/bin/ffmpeg
+	linux-vdso.so.1 (0x00007fc721e48000)
+	libavdevice.so.60 => /lib/x86_64-linux-gnu/libavdevice.so.60 (0x00007fc721db4000)
+	libavfilter.so.9 => /lib/x86_64-linux-gnu/libavfilter.so.9 (0x00007fc7210b2000)
+	libavformat.so.60 => /lib/x86_64-linux-gnu/libavformat.so.60 (0x00007fc720dfb000)
+	libavcodec.so.60 => /lib/x86_64-linux-gnu/libavcodec.so.60 (0x00007fc71f8dd000)
+	libpostproc.so.57 => /lib/x86_64-linux-gnu/libpostproc.so.57 (0x00007fc71f8c7000)
+	libswresample.so.4 => /lib/x86_64-linux-gnu/libswresample.so.4 (0x00007fc71f8a4000)
+	libswscale.so.7 => /lib/x86_64-linux-gnu/libswscale.so.7 (0x00007fc71f7ff000)
+	libavutil.so.58 => /lib/x86_64-linux-gnu/libavutil.so.58 (0x00007fc71e6e5000)
+	libm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007fc71e5fc000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007fc71e3e9000)
+	libraw1394.so.11 => /lib/x86_64-linux-gnu/libraw1394.so.11 (0x00007fc71e3d8000)
+	libavc1394.so.0 => /lib/x86_64-linux-gnu/libavc1394.so.0 (0x00007fc71e3cf000)
+	librom1394.so.0 => /lib/x86_64-linux-gnu/librom1394.so.0 (0x00007fc71e3c9000)
+	libiec61883.so.0 => /lib/x86_64-linux-gnu/libiec61883.so.0 (0x00007fc71e3ba000)
+	libjack.so.0 => /lib/x86_64-linux-gnu/libjack.so.0 (0x00007fc71e367000)
+	libdrm.so.2 => /lib/x86_64-linux-gnu/libdrm.so.2 (0x00007fc71e350000)
+	libopenal.so.1 => /lib/x86_64-linux-gnu/libopenal.so.1 (0x00007fc71e1b8000)
+	libxcb.so.1 => /lib/x86_64-linux-gnu/libxcb.so.1 (0x00007fc71e18d000)
+	libxcb-shm.so.0 => /lib/x86_64-linux-gnu/libxcb-shm.so.0 (0x00007fc71e188000)
+	libxcb-shape.so.0 => /lib/x86_64-linux-gnu/libxcb-shape.so.0 (0x00007fc71e183000)
+	libxcb-xfixes.so.0 => /lib/x86_64-linux-gnu/libxcb-xfixes.so.0 (0x00007fc71e179000)
+	libcdio_paranoia.so.2 => /lib/x86_64-linux-gnu/libcdio_paranoia.so.2 (0x00007fc71e16f000)
+	libcdio_cdda.so.2 => /lib/x86_64-linux-gnu/libcdio_cdda.so.2 (0x00007fc71e165000)
+	libdc1394.so.25 => /lib/x86_64-linux-gnu/libdc1394.so.25 (0x00007fc71e0eb000)
+	libasound.so.2 => /lib/x86_64-linux-gnu/libasound.so.2 (0x00007fc71dfe1000)
+	libcaca.so.0 => /lib/x86_64-linux-gnu/libcaca.so.0 (0x00007fc71df18000)
+	libGL.so.1 => /lib/x86_64-linux-gnu/libGL.so.1 (0x00007fc71de91000)
+	libpulse.so.0 => /lib/x86_64-linux-gnu/libpulse.so.0 (0x00007fc71de40000)
+	libSDL2-2.0.so.0 => /lib/x86_64-linux-gnu/libSDL2-2.0.so.0 (0x00007fc71dc64000)
+	libXv.so.1 => /lib/x86_64-linux-gnu/libXv.so.1 (0x00007fc71dc5b000)
+	libX11.so.6 => /lib/x86_64-linux-gnu/libX11.so.6 (0x00007fc71db1d000)
+	libXext.so.6 => /lib/x86_64-linux-gnu/libXext.so.6 (0x00007fc71db09000)
+	libpocketsphinx.so.3 => /lib/x86_64-linux-gnu/libpocketsphinx.so.3 (0x00007fc71dac0000)
+	libsphinxbase.so.3 => /lib/x86_64-linux-gnu/libsphinxbase.so.3 (0x00007fc71da7f000)
+	libbs2b.so.0 => /lib/x86_64-linux-gnu/libbs2b.so.0 (0x00007fc71da76000)
+	liblilv-0.so.0 => /lib/x86_64-linux-gnu/liblilv-0.so.0 (0x00007fc71da5d000)
+	librubberband.so.2 => /lib/x86_64-linux-gnu/librubberband.so.2 (0x00007fc71da0d000)
+	libmysofa.so.1 => /lib/x86_64-linux-gnu/libmysofa.so.1 (0x00007fc71d9fc000)
+	libflite_cmu_us_awb.so.1 => /lib/x86_64-linux-gnu/libflite_cmu_us_awb.so.1 (0x00007fc71d606000)
+	libflite_cmu_us_kal.so.1 => /lib/x86_64-linux-gnu/libflite_cmu_us_kal.so.1 (0x00007fc71d4a1000)
+	libflite_cmu_us_kal16.so.1 => /lib/x86_64-linux-gnu/libflite_cmu_us_kal16.so.1 (0x00007fc71d0c6000)
+	libflite_cmu_us_rms.so.1 => /lib/x86_64-linux-gnu/libflite_cmu_us_rms.so.1 (0x00007fc71cc2d000)
+	libflite_cmu_us_slt.so.1 => /lib/x86_64-linux-gnu/libflite_cmu_us_slt.so.1 (0x00007fc71c836000)
+	libflite.so.1 => /lib/x86_64-linux-gnu/libflite.so.1 (0x00007fc71c7fc000)
+	libharfbuzz.so.0 => /lib/x86_64-linux-gnu/libharfbuzz.so.0 (0x00007fc71c6ef000)
+	libfribidi.so.0 => /lib/x86_64-linux-gnu/libfribidi.so.0 (0x00007fc71c6cf000)
+	libplacebo.so.338 => /lib/x86_64-linux-gnu/libplacebo.so.338 (0x00007fc71be52000)
+	libass.so.9 => /lib/x86_64-linux-gnu/libass.so.9 (0x00007fc71be19000)
+	libva.so.2 => /lib/x86_64-linux-gnu/libva.so.2 (0x00007fc71bde9000)
+	libvidstab.so.1.1 => /lib/x86_64-linux-gnu/libvidstab.so.1.1 (0x00007fc71bdd4000)
+	libzmq.so.5 => /lib/x86_64-linux-gnu/libzmq.so.5 (0x00007fc71bd32000)
+	libzimg.so.2 => /lib/x86_64-linux-gnu/libzimg.so.2 (0x00007fc71bc65000)
+	libstdc++.so.6 => /lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007fc71b9e7000)
+	libOpenCL.so.1 => /lib/x86_64-linux-gnu/libOpenCL.so.1 (0x00007fc71b9d4000)
+	libfontconfig.so.1 => /lib/x86_64-linux-gnu/libfontconfig.so.1 (0x00007fc71b983000)
+	libfreetype.so.6 => /lib/x86_64-linux-gnu/libfreetype.so.6 (0x00007fc71b8b7000)
+	libvpl.so.2 => /lib/x86_64-linux-gnu/libvpl.so.2 (0x00007fc71b87f000)
+	libz.so.1 => /lib/x86_64-linux-gnu/libz.so.1 (0x00007fc71b863000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007fc721e4a000)
+	libxml2.so.2 => /lib/x86_64-linux-gnu/libxml2.so.2 (0x00007fc71b67f000)
+	libbz2.so.1.0 => /lib/x86_64-linux-gnu/libbz2.so.1.0 (0x00007fc71b66b000)
+	libgme.so.0 => /lib/x86_64-linux-gnu/libgme.so.0 (0x00007fc71b61f000)
+	libopenmpt.so.0 => /lib/x86_64-linux-gnu/libopenmpt.so.0 (0x00007fc71b446000)
+	libchromaprint.so.1 => /lib/x86_64-linux-gnu/libchromaprint.so.1 (0x00007fc71b436000)
+	libbluray.so.2 => /lib/x86_64-linux-gnu/libbluray.so.2 (0x00007fc71b3dc000)
+	libgnutls.so.30 => /lib/x86_64-linux-gnu/libgnutls.so.30 (0x00007fc71b1e1000)
+	librabbitmq.so.4 => /lib/x86_64-linux-gnu/librabbitmq.so.4 (0x00007fc71b1c9000)
+	librist.so.4 => /lib/x86_64-linux-gnu/librist.so.4 (0x00007fc71b196000)
+	libsrt-gnutls.so.1.5 => /lib/x86_64-linux-gnu/libsrt-gnutls.so.1.5 (0x00007fc71b0cd000)
+	libssh-gcrypt.so.4 => /lib/x86_64-linux-gnu/libssh-gcrypt.so.4 (0x00007fc71b040000)
+	libvpx.so.9 => /lib/x86_64-linux-gnu/libvpx.so.9 (0x00007fc71acf7000)
+	libwebpmux.so.3 => /lib/x86_64-linux-gnu/libwebpmux.so.3 (0x00007fc71ace9000)
+	liblzma.so.5 => /lib/x86_64-linux-gnu/liblzma.so.5 (0x00007fc71acb7000)
+	libdav1d.so.7 => /lib/x86_64-linux-gnu/libdav1d.so.7 (0x00007fc71aadb000)
+	librsvg-2.so.2 => /lib/x86_64-linux-gnu/librsvg-2.so.2 (0x00007fc71a476000)
+	libgobject-2.0.so.0 => /lib/x86_64-linux-gnu/libgobject-2.0.so.0 (0x00007fc71a411000)
+	libglib-2.0.so.0 => /lib/x86_64-linux-gnu/libglib-2.0.so.0 (0x00007fc71a2c8000)
+	libcairo.so.2 => /lib/x86_64-linux-gnu/libcairo.so.2 (0x00007fc71a184000)
+	libzvbi.so.0 => /lib/x86_64-linux-gnu/libzvbi.so.0 (0x00007fc71a0f7000)
+	libsnappy.so.1 => /lib/x86_64-linux-gnu/libsnappy.so.1 (0x00007fc71a0ec000)
+	libaom.so.3 => /lib/x86_64-linux-gnu/libaom.so.3 (0x00007fc719b6d000)
+	libcodec2.so.1.2 => /lib/x86_64-linux-gnu/libcodec2.so.1.2 (0x00007fc718b5b000)
+	libgsm.so.1 => /lib/x86_64-linux-gnu/libgsm.so.1 (0x00007fc718b4c000)
+	libjxl.so.0.7 => /lib/x86_64-linux-gnu/libjxl.so.0.7 (0x00007fc7187d1000)
+	libjxl_threads.so.0.7 => /lib/x86_64-linux-gnu/libjxl_threads.so.0.7 (0x00007fc7187cb000)
+	libmp3lame.so.0 => /lib/x86_64-linux-gnu/libmp3lame.so.0 (0x00007fc718755000)
+	libopenjp2.so.7 => /lib/x86_64-linux-gnu/libopenjp2.so.7 (0x00007fc7186f4000)
+	libopus.so.0 => /lib/x86_64-linux-gnu/libopus.so.0 (0x00007fc718693000)
+	librav1e.so.0 => /lib/x86_64-linux-gnu/librav1e.so.0 (0x00007fc718370000)
+	libshine.so.3 => /lib/x86_64-linux-gnu/libshine.so.3 (0x00007fc718364000)
+	libspeex.so.1 => /lib/x86_64-linux-gnu/libspeex.so.1 (0x00007fc718347000)
+	libSvtAv1Enc.so.1 => /lib/x86_64-linux-gnu/libSvtAv1Enc.so.1 (0x00007fc717b25000)
+	libtheoraenc.so.1 => /lib/x86_64-linux-gnu/libtheoraenc.so.1 (0x00007fc717aec000)
+	libtheoradec.so.1 => /lib/x86_64-linux-gnu/libtheoradec.so.1 (0x00007fc717acc000)
+	libtwolame.so.0 => /lib/x86_64-linux-gnu/libtwolame.so.0 (0x00007fc717aa6000)
+	libvorbis.so.0 => /lib/x86_64-linux-gnu/libvorbis.so.0 (0x00007fc717a78000)
+	libvorbisenc.so.2 => /lib/x86_64-linux-gnu/libvorbisenc.so.2 (0x00007fc7179cd000)
+	libwebp.so.7 => /lib/x86_64-linux-gnu/libwebp.so.7 (0x00007fc717952000)
+	libx264.so.164 => /lib/x86_64-linux-gnu/libx264.so.164 (0x00007fc71768d000)
+	libx265.so.199 => /lib/x86_64-linux-gnu/libx265.so.199 (0x00007fc7166ed000)
+	libxvidcore.so.4 => /lib/x86_64-linux-gnu/libxvidcore.so.4 (0x00007fc7165e0000)
+	libsoxr.so.0 => /lib/x86_64-linux-gnu/libsoxr.so.0 (0x00007fc71657a000)
+	libva-drm.so.2 => /lib/x86_64-linux-gnu/libva-drm.so.2 (0x00007fc716575000)
+	libva-x11.so.2 => /lib/x86_64-linux-gnu/libva-x11.so.2 (0x00007fc71656d000)
+	libvdpau.so.1 => /lib/x86_64-linux-gnu/libvdpau.so.1 (0x00007fc716565000)
+	libdb-5.3.so => /lib/x86_64-linux-gnu/libdb-5.3.so (0x00007fc7163b5000)
+	libgcc_s.so.1 => /lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007fc716387000)
+	libsndio.so.7 => /lib/x86_64-linux-gnu/libsndio.so.7 (0x00007fc716374000)
+	libXau.so.6 => /lib/x86_64-linux-gnu/libXau.so.6 (0x00007fc71636e000)
+	libXdmcp.so.6 => /lib/x86_64-linux-gnu/libXdmcp.so.6 (0x00007fc716364000)
+	libcdio.so.19 => /lib/x86_64-linux-gnu/libcdio.so.19 (0x00007fc71633b000)
+	libusb-1.0.so.0 => /lib/x86_64-linux-gnu/libusb-1.0.so.0 (0x00007fc71631d000)
+	libslang.so.2 => /lib/x86_64-linux-gnu/libslang.so.2 (0x00007fc715f71000)
+	libncursesw.so.6 => /lib/x86_64-linux-gnu/libncursesw.so.6 (0x00007fc715f35000)
+	libtinfo.so.6 => /lib/x86_64-linux-gnu/libtinfo.so.6 (0x00007fc715eff000)
+	libGLdispatch.so.0 => /lib/x86_64-linux-gnu/libGLdispatch.so.0 (0x00007fc715e47000)
+	libGLX.so.0 => /lib/x86_64-linux-gnu/libGLX.so.0 (0x00007fc715e14000)
+	libpulsecommon-16.1.so => /usr/lib/x86_64-linux-gnu/pulseaudio/libpulsecommon-16.1.so (0x00007fc715d96000)
+	libdbus-1.so.3 => /lib/x86_64-linux-gnu/libdbus-1.so.3 (0x00007fc715d47000)
+	libsamplerate.so.0 => /lib/x86_64-linux-gnu/libsamplerate.so.0 (0x00007fc715bd6000)
+	libXcursor.so.1 => /lib/x86_64-linux-gnu/libXcursor.so.1 (0x00007fc715bca000)
+	libXi.so.6 => /lib/x86_64-linux-gnu/libXi.so.6 (0x00007fc715bb7000)
+	libXfixes.so.3 => /lib/x86_64-linux-gnu/libXfixes.so.3 (0x00007fc715baf000)
+	libXrandr.so.2 => /lib/x86_64-linux-gnu/libXrandr.so.2 (0x00007fc715ba2000)
+	libXss.so.1 => /lib/x86_64-linux-gnu/libXss.so.1 (0x00007fc715b9d000)
+	libgbm.so.1 => /lib/x86_64-linux-gnu/libgbm.so.1 (0x00007fc715b94000)
+	libwayland-egl.so.1 => /lib/x86_64-linux-gnu/libwayland-egl.so.1 (0x00007fc715b8f000)
+	libwayland-client.so.0 => /lib/x86_64-linux-gnu/libwayland-client.so.0 (0x00007fc715b7f000)
+	libwayland-cursor.so.0 => /lib/x86_64-linux-gnu/libwayland-cursor.so.0 (0x00007fc715b75000)
+	libxkbcommon.so.0 => /lib/x86_64-linux-gnu/libxkbcommon.so.0 (0x00007fc715b2c000)
+	libdecor-0.so.0 => /lib/x86_64-linux-gnu/libdecor-0.so.0 (0x00007fc715b21000)
+	libblas.so.3 => /lib/x86_64-linux-gnu/libblas.so.3 (0x00007fc715ab2000)
+	liblapack.so.3 => /lib/x86_64-linux-gnu/liblapack.so.3 (0x00007fc715435000)
+	libserd-0.so.0 => /lib/x86_64-linux-gnu/libserd-0.so.0 (0x00007fc71541d000)
+	libsord-0.so.0 => /lib/x86_64-linux-gnu/libsord-0.so.0 (0x00007fc715414000)
+	libsratom-0.so.0 => /lib/x86_64-linux-gnu/libsratom-0.so.0 (0x00007fc715409000)
+	libzix-0.so.0 => /lib/x86_64-linux-gnu/libzix-0.so.0 (0x00007fc7153f9000)
+	libfftw3.so.3 => /lib/x86_64-linux-gnu/libfftw3.so.3 (0x00007fc7151d6000)
+	libflite_usenglish.so.1 => /lib/x86_64-linux-gnu/libflite_usenglish.so.1 (0x00007fc7151ac000)
+	libflite_cmulex.so.1 => /lib/x86_64-linux-gnu/libflite_cmulex.so.1 (0x00007fc715115000)
+	libgraphite2.so.3 => /lib/x86_64-linux-gnu/libgraphite2.so.3 (0x00007fc7150ef000)
+	libvulkan.so.1 => /lib/x86_64-linux-gnu/libvulkan.so.1 (0x00007fc71506f000)
+	liblcms2.so.2 => /lib/x86_64-linux-gnu/liblcms2.so.2 (0x00007fc71500d000)
+	libunibreak.so.5 => /lib/x86_64-linux-gnu/libunibreak.so.5 (0x00007fc714feb000)
+	libgomp.so.1 => /lib/x86_64-linux-gnu/libgomp.so.1 (0x00007fc714f95000)
+	libbsd.so.0 => /lib/x86_64-linux-gnu/libbsd.so.0 (0x00007fc714f7f000)
+	libsodium.so.23 => /lib/x86_64-linux-gnu/libsodium.so.23 (0x00007fc714f26000)
+	libpgm-5.3.so.0 => /lib/x86_64-linux-gnu/libpgm-5.3.so.0 (0x00007fc714edc000)
+	libnorm.so.1 => /lib/x86_64-linux-gnu/libnorm.so.1 (0x00007fc714dd1000)
+	libgssapi_krb5.so.2 => /lib/x86_64-linux-gnu/libgssapi_krb5.so.2 (0x00007fc714d7d000)
+	libexpat.so.1 => /lib/x86_64-linux-gnu/libexpat.so.1 (0x00007fc714d4f000)
+	libpng16.so.16 => /lib/x86_64-linux-gnu/libpng16.so.16 (0x00007fc714d15000)
+	libbrotlidec.so.1 => /lib/x86_64-linux-gnu/libbrotlidec.so.1 (0x00007fc714d07000)
+	libicuuc.so.74 => /lib/x86_64-linux-gnu/libicuuc.so.74 (0x00007fc714afa000)
+	libmpg123.so.0 => /lib/x86_64-linux-gnu/libmpg123.so.0 (0x00007fc714a9e000)
+	libvorbisfile.so.3 => /lib/x86_64-linux-gnu/libvorbisfile.so.3 (0x00007fc714a94000)
+	libudfread.so.0 => /lib/x86_64-linux-gnu/libudfread.so.0 (0x00007fc714a87000)
+	libp11-kit.so.0 => /lib/x86_64-linux-gnu/libp11-kit.so.0 (0x00007fc7148e3000)
+	libidn2.so.0 => /lib/x86_64-linux-gnu/libidn2.so.0 (0x00007fc7148c1000)
+	libunistring.so.5 => /lib/x86_64-linux-gnu/libunistring.so.5 (0x00007fc714714000)
+	libtasn1.so.6 => /lib/x86_64-linux-gnu/libtasn1.so.6 (0x00007fc7146fe000)
+	libnettle.so.8 => /lib/x86_64-linux-gnu/libnettle.so.8 (0x00007fc7146a7000)
+	libhogweed.so.6 => /lib/x86_64-linux-gnu/libhogweed.so.6 (0x00007fc71465f000)
+	libgmp.so.10 => /lib/x86_64-linux-gnu/libgmp.so.10 (0x00007fc7145db000)
+	libssl.so.3 => /lib/x86_64-linux-gnu/libssl.so.3 (0x00007fc714531000)
+	libcrypto.so.3 => /lib/x86_64-linux-gnu/libcrypto.so.3 (0x00007fc71401d000)
+	libmbedcrypto.so.7 => /lib/x86_64-linux-gnu/libmbedcrypto.so.7 (0x00007fc713f98000)
+	libcjson.so.1 => /lib/x86_64-linux-gnu/libcjson.so.1 (0x00007fc713f8c000)
+	libgcrypt.so.20 => /lib/x86_64-linux-gnu/libgcrypt.so.20 (0x00007fc713e43000)
+	libgpg-error.so.0 => /lib/x86_64-linux-gnu/libgpg-error.so.0 (0x00007fc713e1e000)
+	libcairo-gobject.so.2 => /lib/x86_64-linux-gnu/libcairo-gobject.so.2 (0x00007fc713e12000)
+	libgdk_pixbuf-2.0.so.0 => /lib/x86_64-linux-gnu/libgdk_pixbuf-2.0.so.0 (0x00007fc713de4000)
+	libgio-2.0.so.0 => /lib/x86_64-linux-gnu/libgio-2.0.so.0 (0x00007fc713c12000)
+	libpangocairo-1.0.so.0 => /lib/x86_64-linux-gnu/libpangocairo-1.0.so.0 (0x00007fc713c01000)
+	libpango-1.0.so.0 => /lib/x86_64-linux-gnu/libpango-1.0.so.0 (0x00007fc713b96000)
+	libffi.so.8 => /lib/x86_64-linux-gnu/libffi.so.8 (0x00007fc713b8a000)
+	libpcre2-8.so.0 => /lib/x86_64-linux-gnu/libpcre2-8.so.0 (0x00007fc713af0000)
+	libXrender.so.1 => /lib/x86_64-linux-gnu/libXrender.so.1 (0x00007fc713ae2000)
+	libxcb-render.so.0 => /lib/x86_64-linux-gnu/libxcb-render.so.0 (0x00007fc713ad3000)
+	libpixman-1.so.0 => /lib/x86_64-linux-gnu/libpixman-1.so.0 (0x00007fc713a24000)
+	libhwy.so.1 => /lib/x86_64-linux-gnu/libhwy.so.1 (0x00007fc713a18000)
+	libbrotlienc.so.1 => /lib/x86_64-linux-gnu/libbrotlienc.so.1 (0x00007fc713979000)
+	libogg.so.0 => /lib/x86_64-linux-gnu/libogg.so.0 (0x00007fc71396d000)
+	libsharpyuv.so.0 => /lib/x86_64-linux-gnu/libsharpyuv.so.0 (0x00007fc713965000)
+	libnuma.so.1 => /lib/x86_64-linux-gnu/libnuma.so.1 (0x00007fc713957000)
+	libX11-xcb.so.1 => /lib/x86_64-linux-gnu/libX11-xcb.so.1 (0x00007fc713952000)
+	libxcb-dri3.so.0 => /lib/x86_64-linux-gnu/libxcb-dri3.so.0 (0x00007fc71394b000)
+	libudev.so.1 => /lib/x86_64-linux-gnu/libudev.so.1 (0x00007fc713916000)
+	libsndfile.so.1 => /lib/x86_64-linux-gnu/libsndfile.so.1 (0x00007fc71388e000)
+	libsystemd.so.0 => /lib/x86_64-linux-gnu/libsystemd.so.0 (0x00007fc7137ae000)
+	libasyncns.so.0 => /lib/x86_64-linux-gnu/libasyncns.so.0 (0x00007fc7137a6000)
+	libapparmor.so.1 => /lib/x86_64-linux-gnu/libapparmor.so.1 (0x00007fc713791000)
+	libopenblas.so.0 => /lib/x86_64-linux-gnu/libopenblas.so.0 (0x00007fc7113b0000)
+	libgfortran.so.5 => /lib/x86_64-linux-gnu/libgfortran.so.5 (0x00007fc711092000)
+	libmd.so.0 => /lib/x86_64-linux-gnu/libmd.so.0 (0x00007fc711083000)
+	libkrb5.so.3 => /lib/x86_64-linux-gnu/libkrb5.so.3 (0x00007fc710fba000)
+	libk5crypto.so.3 => /lib/x86_64-linux-gnu/libk5crypto.so.3 (0x00007fc710f8e000)
+	libcom_err.so.2 => /lib/x86_64-linux-gnu/libcom_err.so.2 (0x00007fc710f88000)
+	libkrb5support.so.0 => /lib/x86_64-linux-gnu/libkrb5support.so.0 (0x00007fc710f7b000)
+	libbrotlicommon.so.1 => /lib/x86_64-linux-gnu/libbrotlicommon.so.1 (0x00007fc710f58000)
+	libicudata.so.74 => /lib/x86_64-linux-gnu/libicudata.so.74 (0x00007fc70f1f8000)
+	libgmodule-2.0.so.0 => /lib/x86_64-linux-gnu/libgmodule-2.0.so.0 (0x00007fc70f1ef000)
+	libjpeg.so.8 => /lib/x86_64-linux-gnu/libjpeg.so.8 (0x00007fc70f16c000)
+	libmount.so.1 => /lib/x86_64-linux-gnu/libmount.so.1 (0x00007fc70f11f000)
+	libselinux.so.1 => /lib/x86_64-linux-gnu/libselinux.so.1 (0x00007fc70f0f2000)
+	libpangoft2-1.0.so.0 => /lib/x86_64-linux-gnu/libpangoft2-1.0.so.0 (0x00007fc70f0d7000)
+	libthai.so.0 => /lib/x86_64-linux-gnu/libthai.so.0 (0x00007fc70f0cc000)
+	libcap.so.2 => /lib/x86_64-linux-gnu/libcap.so.2 (0x00007fc70f0bd000)
+	libFLAC.so.12 => /lib/x86_64-linux-gnu/libFLAC.so.12 (0x00007fc70f059000)
+	liblz4.so.1 => /lib/x86_64-linux-gnu/liblz4.so.1 (0x00007fc70f037000)
+	libzstd.so.1 => /lib/x86_64-linux-gnu/libzstd.so.1 (0x00007fc70ef7d000)
+	libkeyutils.so.1 => /lib/x86_64-linux-gnu/libkeyutils.so.1 (0x00007fc70ef76000)
+	libresolv.so.2 => /lib/x86_64-linux-gnu/libresolv.so.2 (0x00007fc70ef62000)
+	libblkid.so.1 => /lib/x86_64-linux-gnu/libblkid.so.1 (0x00007fc70ef27000)
+	libdatrie.so.1 => /lib/x86_64-linux-gnu/libdatrie.so.1 (0x00007fc70ef1e000)
+
+Resolved shared-library SHA-256 values:
+d4df19849bf3805bf76d0563366e7cbcb28bc2674a3bfa3e2465e8994f53fc6d  /lib/x86_64-linux-gnu/libavdevice.so.60
+863ec5f6b0d32cbc64a10048e987a2bba79e3852abc73dfcb9a435158fc75f24  /lib/x86_64-linux-gnu/libavfilter.so.9
+5f0970c52b7723037a7f6357cc1931879513449f742240fff7c37ceb7175ac9f  /lib/x86_64-linux-gnu/libavformat.so.60
+8231c9aecba7d02c132de0e16195ccb3e8002a235a5f364b3635df09e7f513e0  /lib/x86_64-linux-gnu/libavcodec.so.60
+f282fc8370aad3d9246de333c0e6c356834cf16077a7fed3437da75ab29a99ed  /lib/x86_64-linux-gnu/libpostproc.so.57
+d6ca325614995109ee64b2b2e7dc2d2e5a6a67daba26fed101f0a44b65abc1b1  /lib/x86_64-linux-gnu/libswresample.so.4
+a2122c6342e9457a9b7faab2d3f7018f3634fdac4d0b25b8ea974eae0277d78c  /lib/x86_64-linux-gnu/libswscale.so.7
+11b0836441b899e1b2183fc10eda5a5f637c03547fdfe5b97774e2cbd5aeb72c  /lib/x86_64-linux-gnu/libavutil.so.58
+fce00b6f25f459cf4ae0b7fae4257909a1a8a86f9149e7c029a5d617baf1ccd0  /lib/x86_64-linux-gnu/libm.so.6
+3a15d66867d83762c7f2f1e37359cb8f6c5743edb369c65285cb0b1c4f7498bf  /lib/x86_64-linux-gnu/libc.so.6
+a0e47be08f2eaf5775e1f249a8bbd77577304b8bf88350c74f9061f282234393  /lib/x86_64-linux-gnu/libraw1394.so.11
+96fb9f93896ee8f876edaca51e7a51c4b95c30d9ced64ee9374875b413bff0d9  /lib/x86_64-linux-gnu/libavc1394.so.0
+f33c9e656cf6aded8af5998142fcdc10b3b1919907adea675d57442f2a810e6c  /lib/x86_64-linux-gnu/librom1394.so.0
+f64cec1defae39d3a28cbad1b4ae5c3cc9d9b1e420c1201b1cd81d0c9526d589  /lib/x86_64-linux-gnu/libiec61883.so.0
+7fb2c6394e6d6ce1fec715e6ba8d24c6555ff045f8ccaead10bc6efbed4ad7e6  /lib/x86_64-linux-gnu/libjack.so.0
+ff39219aa058421e46afd36851342370cd1932d2557eb22f54e129755642bf67  /lib/x86_64-linux-gnu/libdrm.so.2
+89bf02dc4e8f13680b3aae45770f9436627841b427693a565c15d4895f4c7331  /lib/x86_64-linux-gnu/libopenal.so.1
+7958a0136b121bdc4c708968569ad152a9ed208ab026e2537b1005dde64ca440  /lib/x86_64-linux-gnu/libxcb.so.1
+ad78a7b22409685ca82e54346c2b9465d697f303e69e74a9c1693bb206e319df  /lib/x86_64-linux-gnu/libxcb-shm.so.0
+370c60dd84cfe5f8517866b573ccbaf2b3fd97bd980f427f3bbb3dbc9288369e  /lib/x86_64-linux-gnu/libxcb-shape.so.0
+e59ef497333a6ede2096a0bd9eeb6ec4023374c16d3a8d7511d1251fb7f9b9df  /lib/x86_64-linux-gnu/libxcb-xfixes.so.0
+94598f6c40e267e5d456588dda7b20c981857163565e1db85d5e6f742b88385d  /lib/x86_64-linux-gnu/libcdio_paranoia.so.2
+3dfd1e5221c1c950c0923d3283c781336b28b7a0a9d31caa00ac2f0ee04a514f  /lib/x86_64-linux-gnu/libcdio_cdda.so.2
+a7316eaf55eacd8bb413f9cf449df70bb1ded9b0eb82418fba83e6a115f46a13  /lib/x86_64-linux-gnu/libdc1394.so.25
+ff4c69ef420f2d0ab92c813d2222d097c6a7eafe3b13952aed069e2bb0204f55  /lib/x86_64-linux-gnu/libasound.so.2
+b9e6ebd81df969142226695162b1e8c9cda0c45c008dda688149492ee1a5ea8a  /lib/x86_64-linux-gnu/libcaca.so.0
+67f471213576d225d38347a0b6d2a08a231980685301ff6461bd74d3994e5027  /lib/x86_64-linux-gnu/libGL.so.1
+3d78bd6bfcebccb7d4e65bac298c3aef5b0906fc4c6a4bebcd761c845f4c3c4a  /lib/x86_64-linux-gnu/libpulse.so.0
+2507acbbe40afe7d3e2e775dd8af00a1dba93579b9e837563032f3d751a9a45b  /lib/x86_64-linux-gnu/libSDL2-2.0.so.0
+0f5136caf15ccd0eea5faf5ec429bf1d406b8a2bdbd283965110511825485f02  /lib/x86_64-linux-gnu/libXv.so.1
+edd2ddf6e00a81c40b8645f7dbb6d6603c6a0a78d583bdbe7491d8a84de6e3b6  /lib/x86_64-linux-gnu/libX11.so.6
+2907e6a996465de5b32a0dd10534d4416b87f1dee5670aaa7b19301a1fc93f44  /lib/x86_64-linux-gnu/libXext.so.6
+9df7cf49d5dcf285284a23b0a9c9feb1db1fba82225bca05c77fdfd47c269a8f  /lib/x86_64-linux-gnu/libpocketsphinx.so.3
+a810b1db08b2aca7ccddc6059ae99203242aa9b61072c98799497c7388123a8d  /lib/x86_64-linux-gnu/libsphinxbase.so.3
+1a6748a955f5573a5e12915aa30cd1f2532d8018e5e57db5add0bdfed8235691  /lib/x86_64-linux-gnu/libbs2b.so.0
+be488ddc8b92267b80517b46a6c31699d8f1695d6ae26c728d9b83ee3ee74093  /lib/x86_64-linux-gnu/liblilv-0.so.0
+97c10ec8328a9d5dab1b2e4c562f0a43402a30dacf9bdb20287691331e751670  /lib/x86_64-linux-gnu/librubberband.so.2
+4b7c6642dcfa3a8d318e6fd3cc73d01ea2391d85839c08eede7090787bf8111e  /lib/x86_64-linux-gnu/libmysofa.so.1
+507a9d48ef3fc3162e682932e0dd85e415c0a65ee879f1bb7a126101cc3a6155  /lib/x86_64-linux-gnu/libflite_cmu_us_awb.so.1
+38bfa0eadb0a2e5af6f6947b16b9bf7ed8118d9c6eee308c23e92cba05956761  /lib/x86_64-linux-gnu/libflite_cmu_us_kal.so.1
+275478a93c9b3b739a3457c4b75ae2ab643ac4fcd3915e56865ca2168369ec88  /lib/x86_64-linux-gnu/libflite_cmu_us_kal16.so.1
+f78b65b0955caf40131f2228133268b53b0bdc6a5aeada22b29599561c69bbaa  /lib/x86_64-linux-gnu/libflite_cmu_us_rms.so.1
+03ccfdbdd4df4135e0a825f9810fce1fe051cc739c36ccc75a9947a114cdd55f  /lib/x86_64-linux-gnu/libflite_cmu_us_slt.so.1
+d456d49a5e39689cf2012df85fb8e5c37c7c85f2de9df061fee0450231c348da  /lib/x86_64-linux-gnu/libflite.so.1
+4562cfcfd18935324ba3ac74a944898b867ab87a56e925ab3e351ba773f1513e  /lib/x86_64-linux-gnu/libharfbuzz.so.0
+550020af7ff4f77e3f05500e71051b676ee76f530479c2a836dfe899fcaf8395  /lib/x86_64-linux-gnu/libfribidi.so.0
+c796e73dc5ae2f3989083cb3366fa8d8c0989e9f305ba3c0d109b295fac44c5b  /lib/x86_64-linux-gnu/libplacebo.so.338
+64f3d967f24112a29183c5e7727992180262d8f45032d5aeb64288f5521323a0  /lib/x86_64-linux-gnu/libass.so.9
+e4ef5c69a85067b917ef0d114cbdaaff46dd42eded2e0839cbcc533d86b63c08  /lib/x86_64-linux-gnu/libva.so.2
+7032d796074267dc4568504ce1f4a17bb39a41299d3b81f2e7e41527cea955de  /lib/x86_64-linux-gnu/libvidstab.so.1.1
+c56acd8baaec3d869f7e23a194870302acef6d86384f1f0fe946fb81c7015a42  /lib/x86_64-linux-gnu/libzmq.so.5
+03bb2f18c31b2e0cef185a67672a5014cc43d01be7706ae1706320d235a7617c  /lib/x86_64-linux-gnu/libzimg.so.2
+1fd75fe70354a416d75aef22bcae68c47bd25d20e2d0568c30b1a9838cf62f11  /lib/x86_64-linux-gnu/libstdc++.so.6
+4f604bad7420b753bad559186002c58064d5c97813b107ea11c249fb1820b33a  /lib/x86_64-linux-gnu/libOpenCL.so.1
+a94b4059b27766f563894c8f7e61762b6f6b2e25c59ef36b730164d4b75c6c98  /lib/x86_64-linux-gnu/libfontconfig.so.1
+992dac80abe3a3854f3eb2668da4207c029664ceca5f122ddb46e2a8169e9499  /lib/x86_64-linux-gnu/libfreetype.so.6
+05395f60a5eb5439714aec65a29f50dbe9a4703abcd19d9359834f2e8b35afef  /lib/x86_64-linux-gnu/libvpl.so.2
+86200da370f20476a2507e9097a789b5ef97269b4ca8d5e164ad82dab9d99892  /lib/x86_64-linux-gnu/libz.so.1
+209e941be9eb2eb9ab36caaa0b81d1c6b36c8f5d7268c24f19e81039137e6485  /lib/x86_64-linux-gnu/libxml2.so.2
+cc08c9f50a8009ffd6391e0116a100369b11ca9238fa52392c019e6645b122a1  /lib/x86_64-linux-gnu/libbz2.so.1.0
+70f3bc0133a2c991bd89ba85cfd248e4facf2276a9c6205957f15ecb16e5276c  /lib/x86_64-linux-gnu/libgme.so.0
+8d61f46762f1779d541d307351c355f0bd5892b14aa0d480e2c9308f18631366  /lib/x86_64-linux-gnu/libopenmpt.so.0
+6d960c4294b0cef952a2dd282df2f484642f182c58fa5b2fb1d9fa05ac8b1d3e  /lib/x86_64-linux-gnu/libchromaprint.so.1
+d76b9963fbf40813e2f3428f57b407bfd931f9ed8b99e0812a923f40025bb62a  /lib/x86_64-linux-gnu/libbluray.so.2
+ddbae2995750875c07bc218d12a062d73f8250678f54dedda7e9be5068781c98  /lib/x86_64-linux-gnu/libgnutls.so.30
+b86eccb2f5ba47af9ef0f01d99cd27f288a59bf715f55820e99ed48feebc251a  /lib/x86_64-linux-gnu/librabbitmq.so.4
+ea8c081bcf74f33b20db9fc993ee4be1af64aecd2ee0347973bc139edf6c414f  /lib/x86_64-linux-gnu/librist.so.4
+4990b1b022feefba42cb022af42ac6fefd76e4efbf306e52d27a5dcb02a2810d  /lib/x86_64-linux-gnu/libsrt-gnutls.so.1.5
+079b5af8caf1af1c667d55a005948fcff92aeb1ed905392488f61375af9bf7fc  /lib/x86_64-linux-gnu/libssh-gcrypt.so.4
+8aaa06aac468b3dd029ae2266f44cbc80c0c9ab7b0902cddb03363186b0d253a  /lib/x86_64-linux-gnu/libvpx.so.9
+97e04dbba80ea27d0258584452efda0fa41bfa598bbca52eb4e120fcb6300962  /lib/x86_64-linux-gnu/libwebpmux.so.3
+696e868dd0700a19a6d65fc01608ec2d70d3cb91f65710e89180cd2e688f30cb  /lib/x86_64-linux-gnu/liblzma.so.5
+314d53716c5f74d39dcfcfe29e341671ad25bf43022a218e54d019c35ce5222c  /lib/x86_64-linux-gnu/libdav1d.so.7
+81b5db4db32c47697c7b6d7432e541544342c97bc88173df9f18bb0679279c51  /lib/x86_64-linux-gnu/librsvg-2.so.2
+7a8981c2df678797438cc92f246402b81d185604623d12ab71c1ff1c2840e9fc  /lib/x86_64-linux-gnu/libgobject-2.0.so.0
+96ef9163aee942bdc09e6f4a1acd2fd6b178c03af824c569741440d63ac9f4f4  /lib/x86_64-linux-gnu/libglib-2.0.so.0
+3144bd5935aee427d6c191b6b6d0ebf9010fb6320295a7f73edd276bc6993f2d  /lib/x86_64-linux-gnu/libcairo.so.2
+134705a7ef4d982eb57bf71a9378f3eb0d95237c8dcb686d684e35471ae834b0  /lib/x86_64-linux-gnu/libzvbi.so.0
+955acc8eec21bea1fe890ebf75e73d1c94438264d55e042c10ad1a7a57c2e065  /lib/x86_64-linux-gnu/libsnappy.so.1
+8237d4144def32f99903834d4a11892f8e133ae8592b6fe3325e541a917e1bbf  /lib/x86_64-linux-gnu/libaom.so.3
+b54a235c5bd6424cc03ba736ee3889afba5cf4f4d02a134c4ea554d3ec8bd299  /lib/x86_64-linux-gnu/libcodec2.so.1.2
+c2cba796fbc32dc5aa8c26a41819a51cb5f446eb441420751500dc68f9d9a87c  /lib/x86_64-linux-gnu/libgsm.so.1
+2f1258f33f060a53850b03ff9e4593e88a6cc8d1cc033b692a0dc11d9cbabb79  /lib/x86_64-linux-gnu/libjxl.so.0.7
+5b07edd34d27c427f75360fee0486e1951ca5afeda884eaeeac75eeb44c7bdec  /lib/x86_64-linux-gnu/libjxl_threads.so.0.7
+14b664b4af2fe18975adb3c06c0369b436dd6504ce421736649c0415447c9d00  /lib/x86_64-linux-gnu/libmp3lame.so.0
+19906c0334e8db2137912f83cceed5a03d954a9c12d9781901a9a27f92ce1c4d  /lib/x86_64-linux-gnu/libopenjp2.so.7
+63ddaf057d71c53090607e0467eb308640c3b39b0f189e5b937e9c397be2f676  /lib/x86_64-linux-gnu/libopus.so.0
+17a828222eaf81d649941b6085d78000f05aedf812d7a22f4c1ce515ed80c7ab  /lib/x86_64-linux-gnu/librav1e.so.0
+48d786bf744f131b49aed602024658aff32cc906e83555133304adb8dc687941  /lib/x86_64-linux-gnu/libshine.so.3
+3115c70bb3a24d8a8b7e79d3e55e243604f9ed534f4c606f63574731a4d04bb7  /lib/x86_64-linux-gnu/libspeex.so.1
+2e5a31a7e8abbf30367aae047ef8a0872e583868aba6461e57b967bd96ee2f01  /lib/x86_64-linux-gnu/libSvtAv1Enc.so.1
+8ecc0a9e6f2017545c1f3ac6266da7a50903bea568e5f4a1fd73f9b6f2b02e9e  /lib/x86_64-linux-gnu/libtheoraenc.so.1
+b4abb3213bb79f24fb29831d1d44878b113b53ac163c9ba065b393d726b994d7  /lib/x86_64-linux-gnu/libtheoradec.so.1
+d9cc5a4e0d2b7553048e32d47d5db2fb19bf68b2a5d6a7131cc9a8e036164ae4  /lib/x86_64-linux-gnu/libtwolame.so.0
+ba08466742bf3f502d3a47699c321d99fdcb9628aaa8b4356cb6394cfe8a4113  /lib/x86_64-linux-gnu/libvorbis.so.0
+f62e5237a789185d6a08c66745b585edd9e1c6956c16ee34d98ad6435efc7881  /lib/x86_64-linux-gnu/libvorbisenc.so.2
+9664db51ec65209078abbb8bc7b699888a43ecc2f3c74ce8dd4e497175aa5bf0  /lib/x86_64-linux-gnu/libwebp.so.7
+e8d6174800d71680cdd48a4d4cd21eadc57bddf67115beccf583a47b5470162f  /lib/x86_64-linux-gnu/libx264.so.164
+d36cd663a24eeca90178f95b91513b96ae1d4e3c6cf28557646af5926ef03934  /lib/x86_64-linux-gnu/libx265.so.199
+73585606bd646666fd85b5c34ce8df4d3e637d937812f5a51c45554795394124  /lib/x86_64-linux-gnu/libxvidcore.so.4
+6477ceb1bb623049fe1f168d320139cd5281546ed16722e73072133acc269f93  /lib/x86_64-linux-gnu/libsoxr.so.0
+d0cc621e11792f1c0d93a5ac5ec66a5ff2a1e6e101de9ac35471861dd2cccc35  /lib/x86_64-linux-gnu/libva-drm.so.2
+0db100a09eb6a38d208349bdf404a52e3a8b2d7a950143ff67936cd0928456c1  /lib/x86_64-linux-gnu/libva-x11.so.2
+d2fbdebe81f1531713be10a1213cc9280e15dda389afd9cf51970c264d532974  /lib/x86_64-linux-gnu/libvdpau.so.1
+1812047c39ea3c26ee5b2b585abbafc18cd158dfcd84e5368c998cc6178e815b  /lib/x86_64-linux-gnu/libdb-5.3.so
+d93224d2b0dab4247598be683adca02f5cf00586f99c187579cd7e92058fb7cb  /lib/x86_64-linux-gnu/libgcc_s.so.1
+e7ce0d18eb8dd47edd102d5d08da6032257db0f2c1fbbb56125eb7c5e03db10a  /lib/x86_64-linux-gnu/libsndio.so.7
+8040da3f8516c1acfe39f04ff022480cdb273705ba5e7a4ca70bbdb1527cd67a  /lib/x86_64-linux-gnu/libXau.so.6
+667d97d6da16016400ab10de9f83ef4ab209ceb6adf68ff9650225ec13e723b0  /lib/x86_64-linux-gnu/libXdmcp.so.6
+5962d19bcb5955a51949900d95e31523e7e75180f26082b5964deed5175f9679  /lib/x86_64-linux-gnu/libcdio.so.19
+751349e3def1808981dc26bbeb746e2d6ff4ca97fc2c8bc8faaa8f46c879057f  /lib/x86_64-linux-gnu/libusb-1.0.so.0
+af564bc54e7c7bc51c21de935846ac6fe5bd551c22ab5af72927ff5e31aaaac4  /lib/x86_64-linux-gnu/libslang.so.2
+b552c698f9f5c7ff8a6f7c11d8595a0d3e6dc3eaf483843895ec76f418080dfb  /lib/x86_64-linux-gnu/libncursesw.so.6
+e6089d7bb95eee5b545f3770dd69095b0bca47d26701cad145af429561d16306  /lib/x86_64-linux-gnu/libtinfo.so.6
+ca01a91104c8887b3d8e59499b58cbb8f604cc285666b50d9ec888eb0c915182  /lib/x86_64-linux-gnu/libGLdispatch.so.0
+16fc8a37eea9210dc83c57eeff5aedc10ab4c6673f2f97e8bb6ee103df657b40  /lib/x86_64-linux-gnu/libGLX.so.0
+00ab68a64ecbb5d6e0d4b5b35707a83a9040cdb373008e487176e49d184cf22f  /usr/lib/x86_64-linux-gnu/pulseaudio/libpulsecommon-16.1.so
+a6ae7b4ef48562b40d7b9ba8efd2e49f6528b7cc6364bea382dcee4b473b5413  /lib/x86_64-linux-gnu/libdbus-1.so.3
+d18228ce734852b424a7baa27d0edf5bfb5aaff6de7a2b541a97c94985586bd3  /lib/x86_64-linux-gnu/libsamplerate.so.0
+09bd5941a53ee7fb06898fa066709cf098df8e33a45042e065d2f8461d92672c  /lib/x86_64-linux-gnu/libXcursor.so.1
+a51348c921ce1a35123fa7c99dc59bfd3e815be6829874fe15ae55172901d3e4  /lib/x86_64-linux-gnu/libXi.so.6
+89e5897f438456013d2297850a7558cd28c9ad1f6978447197568949fb6a0fd9  /lib/x86_64-linux-gnu/libXfixes.so.3
+bc6120a734d52e7f5e3611334e9f3cff0b3ce1b129bb20b6412ce8f0f62c049d  /lib/x86_64-linux-gnu/libXrandr.so.2
+1e165bf4777952eb9bb34c93f12e4fbd5de082a7f88a3c39fcd05e87dd8ddb07  /lib/x86_64-linux-gnu/libXss.so.1
+3c781e20939adc578f1696980cb8a106cfc34da404e89d93faa887e995da2f14  /lib/x86_64-linux-gnu/libgbm.so.1
+f62e5dae4e63cb43e0210f08ef74dd379f0cd87eafbe569998fe6e1c4a820a10  /lib/x86_64-linux-gnu/libwayland-egl.so.1
+1c22abb422953442aa12822ea51ac76d1c8be92ed143e0159e0f830776cde2b2  /lib/x86_64-linux-gnu/libwayland-client.so.0
+bcb52f21ed9a07af67795de01143fc5562939e584b5945ebbec60c054660e9f5  /lib/x86_64-linux-gnu/libwayland-cursor.so.0
+3eb6c7315985803a7c72cb81aa3293b763e6cfc907b70b7b2f641c2827cd90f9  /lib/x86_64-linux-gnu/libxkbcommon.so.0
+dba9cad366c76f275e9a0c0756c45fdb1962251bb9e034411ee96cd97e92ba7e  /lib/x86_64-linux-gnu/libdecor-0.so.0
+8ba4a98f44d763c2e648755ef452025919e28633339f23ff605044de3483a25d  /lib/x86_64-linux-gnu/libblas.so.3
+1e82245607c58d13405580c71b9b0134b5a952686ac861f979fc7a886ebd4229  /lib/x86_64-linux-gnu/liblapack.so.3
+604ff236c92ce0ee75f0508d326e4dae5fe2dddaa9440cc876ce688a79bc284e  /lib/x86_64-linux-gnu/libserd-0.so.0
+d2c3a37c1c18738963e73a66527da829e66382174ffde98c3f6c40f5e3230189  /lib/x86_64-linux-gnu/libsord-0.so.0
+80cd34a4b2073aaf0155070e8871fd94a1e9597de44db972d63f17d624c5c98d  /lib/x86_64-linux-gnu/libsratom-0.so.0
+13c860feb5cde6dda0f7810ed5a09e0d73a6e2090a7630a19620688754e2347b  /lib/x86_64-linux-gnu/libzix-0.so.0
+b5cc02c4d360b5b20111cb0a251f8368af8c9ce3145357f5ba54c51ac4ca9b35  /lib/x86_64-linux-gnu/libfftw3.so.3
+eb6047508420953bb913dc289f4da0eab8c19ef2ea20c4a59b01ab263dcf3737  /lib/x86_64-linux-gnu/libflite_usenglish.so.1
+1be5a03bdad437aa7d4cc35aa2861c34df75a3a10ad855334829a42ce9c93015  /lib/x86_64-linux-gnu/libflite_cmulex.so.1
+fcfaf843b25b58b88319ced52f826fc8213a661f3693c916f88641eddffe05b8  /lib/x86_64-linux-gnu/libgraphite2.so.3
+e833b010f814b72c6aca0300c8b5f19b6106ffa06c24ddc95a293970c7d6058e  /lib/x86_64-linux-gnu/libvulkan.so.1
+65d948920458341176f78e3797320ffb7c052ab5bd75036c3db75dd88839b007  /lib/x86_64-linux-gnu/liblcms2.so.2
+5360900dd22ab64c59c44c7c1855dbfec81c75ade565406cd5d9e10ac19c61e6  /lib/x86_64-linux-gnu/libunibreak.so.5
+135f3c8f006d2fe5e68e51281c7974cb991a03de3bfb3593d68d174dfcf854d1  /lib/x86_64-linux-gnu/libgomp.so.1
+e86cd4f0019f42c2ba5e60602e0edc8694d2948377d98c3654d0f6bddb5254bb  /lib/x86_64-linux-gnu/libbsd.so.0
+fe00408090ea084504d7cb0130af56a22554fe299034b864551b65a64ca8a7b5  /lib/x86_64-linux-gnu/libsodium.so.23
+46e1d5126ff73b9ba0c340b2cf0245d77620f85524c6fc967d533be6d19bdada  /lib/x86_64-linux-gnu/libpgm-5.3.so.0
+2543db995aa530bda8d145126b25c08d54cfe3348993e11eb75c30d6b43f5e72  /lib/x86_64-linux-gnu/libnorm.so.1
+c7aa00cf51646f7c32f196d329a562bc873ff32906c9caf6554ca489dd657507  /lib/x86_64-linux-gnu/libgssapi_krb5.so.2
+286682ecbc5e59a638963b1a4e6351e65eb32fcf4bdcb9cb7569b6a61fe06a8d  /lib/x86_64-linux-gnu/libexpat.so.1
+89c0c6569a8c00480d451401ad4c0a74942e62dc57f229a970592fdc5adb29e8  /lib/x86_64-linux-gnu/libpng16.so.16
+64d8a5019d4c294b89fde1193343ea324bbd8603652554e5545f0a01595fa2c5  /lib/x86_64-linux-gnu/libbrotlidec.so.1
+7560aadde38e5f4237a47a1ddd5891f9b36768a77a60faae30beee003ac01901  /lib/x86_64-linux-gnu/libicuuc.so.74
+af6e041af88719710b77d83b7deb8ecbe10bdf67a255fcadcfae7eec1d19eea6  /lib/x86_64-linux-gnu/libmpg123.so.0
+7499ededea9e6c2a1f3801da281f10ff50cd831b7bf3274da911ef6327b0035d  /lib/x86_64-linux-gnu/libvorbisfile.so.3
+f3ef901a0971ad56255581b9d32906c4cd24d25318b2d91ed360e87eb6997479  /lib/x86_64-linux-gnu/libudfread.so.0
+a59efd4792d3343dedea1d26a28f5597abfe3369082deb504c4802a31b014897  /lib/x86_64-linux-gnu/libp11-kit.so.0
+6e632fd9a3125db60bbc623719bbc17b0470330321c5b1c57f1ff7190e5551ad  /lib/x86_64-linux-gnu/libidn2.so.0
+7bcf825cd449892db5105ad2aed91dcf94a27b796426600c765720c584c54dd1  /lib/x86_64-linux-gnu/libunistring.so.5
+59994414d0cdec4f678ef91eaaafc44b26b00bca507e4cc7978caaf79f584173  /lib/x86_64-linux-gnu/libtasn1.so.6
+a245ed916229583d6fe0b07657b3ed945bc148c28cc08b5266295f620d2b91cc  /lib/x86_64-linux-gnu/libnettle.so.8
+c3c606139d4f7776efa4dbd4a6b62e30c916b07a0cafd8c3ef173d6f093607e3  /lib/x86_64-linux-gnu/libhogweed.so.6
+0ccdfb6d6f5c039465f6d002cf7e4c072d48ac6a2cffc8dd6c748dec31592804  /lib/x86_64-linux-gnu/libgmp.so.10
+a40e7b67489bbd257e432c700ff8f6a1ad796425b5eccecdc2930127fdd86624  /lib/x86_64-linux-gnu/libssl.so.3
+6866ed711dab8927e1bf82bf1cd30e828bdfc34f3cc1e83b1c9eb01ce6c37d9a  /lib/x86_64-linux-gnu/libcrypto.so.3
+6a8310e17b6825987ba3b95fbb57b1c23f8098d5887c62ed813bc723e2b1d55b  /lib/x86_64-linux-gnu/libmbedcrypto.so.7
+31e0b2f4647bc62ec2f64cd61607b7c7fdf988c94a7c496f473e1d5afa76ad32  /lib/x86_64-linux-gnu/libcjson.so.1
+6ad6d7007ee1ad8319eb18ba9a512cf09dda49396a303774c68b47477020bad4  /lib/x86_64-linux-gnu/libgcrypt.so.20
+6cb18a007bfcb623029f4528a36b46578fea7dc34c2b505b8e6e0d99e6348cd1  /lib/x86_64-linux-gnu/libgpg-error.so.0
+61b4b6cb475c8c2c4622fd1618981d466b716b11903255b68975830fa20d982c  /lib/x86_64-linux-gnu/libcairo-gobject.so.2
+f9f51980f9d8978507c3637fa5d4e89f9910d01d74c91905f27158efca27279d  /lib/x86_64-linux-gnu/libgdk_pixbuf-2.0.so.0
+d72a56593ae024d868cb7b494f7e48c76e90e4ced9498ab4da2eb3bece85bda3  /lib/x86_64-linux-gnu/libgio-2.0.so.0
+229b50cdc7e7675000815e18338189db6f03fd564baaa4d0f257dbbe34f14652  /lib/x86_64-linux-gnu/libpangocairo-1.0.so.0
+44fbb30ec8f9b2621095bad0d27cc15cec39245133124a44e8abc45193cbb493  /lib/x86_64-linux-gnu/libpango-1.0.so.0
+00f593fe192f2851b8ce23b25cec2488d769beb5a8f63e8c9e563071e1075153  /lib/x86_64-linux-gnu/libffi.so.8
+e00576d71d81d3ba0cfa4903c835a44a8723aac96f72f79ff75200b4cff9071b  /lib/x86_64-linux-gnu/libpcre2-8.so.0
+250977e0e004b6c0556144c3e683487063b4582dc83d205196ec3aa65d54e2c6  /lib/x86_64-linux-gnu/libXrender.so.1
+35fdef7a90d7f44a0ad9cb259c9ee22f04a48cb064ceb1fc7d17be815acab327  /lib/x86_64-linux-gnu/libxcb-render.so.0
+73aa0daeedb7228754d798b194e2ff69c8b82a689b9aa4f1d8ab32a8763b0cc5  /lib/x86_64-linux-gnu/libpixman-1.so.0
+18d2e318b1ca0b422c61f40ba71c8e4fc569ded626bc5641f1553115d8f2a349  /lib/x86_64-linux-gnu/libhwy.so.1
+6e59301f6c3a05815ecc6cd8c56714280367da1f6737e9f077f5847d86c509f2  /lib/x86_64-linux-gnu/libbrotlienc.so.1
+1017f00b886f340acede53689da1267398e1297a20e8208db69ead7ab0fc3b6d  /lib/x86_64-linux-gnu/libogg.so.0
+b2e62799e5dbd783a0671d53be99f7c6489567a5332a1e8f471e6bb250f294dc  /lib/x86_64-linux-gnu/libsharpyuv.so.0
+02d7582c5d391e460e56aa67a414360e3183b968206645b9123f9dc7bff5d009  /lib/x86_64-linux-gnu/libnuma.so.1
+941ab0ca78131e168817049d4c9935bb0e29b584cf05b58c47e3071f1fa81cf8  /lib/x86_64-linux-gnu/libX11-xcb.so.1
+a919146693e71897484c2996beb837273a7a278d1a2afe477bc072f10681f3b0  /lib/x86_64-linux-gnu/libxcb-dri3.so.0
+4298228175fa62a36af88b1afd4406cdd8b1bf166621f957d0dbbde45a698fe5  /lib/x86_64-linux-gnu/libudev.so.1
+3b9c4be9dab1c1fa6c0d9b9936946f07f02525f93b43fb1ee2112dd3fe70858d  /lib/x86_64-linux-gnu/libsndfile.so.1
+bdf59c828b547bcdbe7b3576c0810d9d9d2e982d8b61b365812542da6a4c4a99  /lib/x86_64-linux-gnu/libsystemd.so.0
+47618619d79ea314f12905b3fff430916123df4a12602a5c40dd3679cf675521  /lib/x86_64-linux-gnu/libasyncns.so.0
+13b9bc655101674701a7c0b0b8a87f31d2f698c054ed34933d5141398c8b92ff  /lib/x86_64-linux-gnu/libapparmor.so.1
+bfc7492adbf84a8f567720a9e1fae2afc18f3d817da233e7f4d453683485308e  /lib/x86_64-linux-gnu/libopenblas.so.0
+342618ccfebe840446e4ef2b7893f4161b2084845e570f42d68a70bfde58a58d  /lib/x86_64-linux-gnu/libgfortran.so.5
+423e18586b6ea740f4465afd64f7a9a4cb7264ed979c8e7256f9085af5345fef  /lib/x86_64-linux-gnu/libmd.so.0
+fad617a72b5839d30143e7db03281279089def6f18788cbb0b7f86385301bf04  /lib/x86_64-linux-gnu/libkrb5.so.3
+b37407fb2930939bf78b47267019cd201a8af1f4b6a3852249c849cf3a985798  /lib/x86_64-linux-gnu/libk5crypto.so.3
+022943b3b11c860b049bce41342f1c2594941b7b401d95dfdf235521099fee08  /lib/x86_64-linux-gnu/libcom_err.so.2
+936bae947a838bd47676a419dfcfb036d0163249215b58ec706ec7d46b7497aa  /lib/x86_64-linux-gnu/libkrb5support.so.0
+a91ead095d2c80520c55a89057bbe10b031a075340442e63f44b310f93883a1b  /lib/x86_64-linux-gnu/libbrotlicommon.so.1
+ddbb3718b8bd9cbd780e5ab08b4503c30a6c4fa0706ebe5d074ed6b596c1714e  /lib/x86_64-linux-gnu/libicudata.so.74
+556b3e8f3c18dbb0255971b1792a076dbd07338482927fe7f9f6c597b1801833  /lib/x86_64-linux-gnu/libgmodule-2.0.so.0
+ac09f2cd6f8a3b8e3cb123999ce275f9bcbe31c6cf9e20212c8f297772591d15  /lib/x86_64-linux-gnu/libjpeg.so.8
+7472255ae5799059b37ddd544788f5665dbd3e1cb78259f52180293039efc2a5  /lib/x86_64-linux-gnu/libmount.so.1
+0ec0843463f90e227b0e138e1f379774f50b5514bd7f5dbd4c8a87aca0aa6670  /lib/x86_64-linux-gnu/libselinux.so.1
+cfcd528cfb737212719b3273b433b7fe35b6528acbb08c2223a486449314d629  /lib/x86_64-linux-gnu/libpangoft2-1.0.so.0
+1a72e318418dc0ee6014401de9d9976516fe127358c07c305e1198b9814e2b31  /lib/x86_64-linux-gnu/libthai.so.0
+6ac6abc86ac891c6e13486470e26f1d939f47fda9e6b5d5508a7f5ec881adc84  /lib/x86_64-linux-gnu/libcap.so.2
+03f99851a828586d74e06f62d098025271b19aeba9fe781a31b2d90dc57e723b  /lib/x86_64-linux-gnu/libFLAC.so.12
+40bffd0a098387368b16b992abd5f7cf43c0fa2f05cabe5a6d483719554adfda  /lib/x86_64-linux-gnu/liblz4.so.1
+0a2128bc10841fb29e76d08d945864dfb0b6a66da5df6df5d8299197439e54bb  /lib/x86_64-linux-gnu/libzstd.so.1
+f48214417757f18793ed6e180cc14ee1d6f04252a518fc7270e8ca1d0b4260fe  /lib/x86_64-linux-gnu/libkeyutils.so.1
+1d730ea434da5a5595bc6a961d7a9ace83e03703205df9644044b3dca79c362f  /lib/x86_64-linux-gnu/libresolv.so.2
+9c3860ffab5422410ff9e073d3e82267f00bc68ff1248cbb191640ee2ff045bc  /lib/x86_64-linux-gnu/libblkid.so.1
+507f33edbbc19b80637d6d66f8e3f62fac097d0b4e9ee6f6f23f535ecea26a61  /lib/x86_64-linux-gnu/libdatrie.so.1

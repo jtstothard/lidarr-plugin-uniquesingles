@@ -2,7 +2,10 @@
 
 The #39–41 implementation notes below record their original verification boundaries.
 [Issue #42 acceptance](acceptance/issue-42.md) supersedes their outstanding macOS
-disposable-host gate; Linux, Windows and production deployment remain separate.
+disposable-host gate. The subsequent [Linux VM102 qualification](acceptance/issue-37-linux.md)
+passed all 14 native stages with Ubuntu FFmpeg 6.1.1 and a separately identified
+DLL. Historical Linux-unverified statements below predate that bounded run.
+Windows and production deployment remain unqualified.
 
 ## Operating the feature
 

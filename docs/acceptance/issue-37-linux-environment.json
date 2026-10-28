@@ -1,0 +1,199 @@
+{
+  "proxmox": {
+    "address": "192.168.10.51",
+    "sshAlias": "proxmox",
+    "identity": [
+      "proxmox1",
+      "7.0.2-6-pve",
+      "pve-manager/9.2.2/b9984c6d90a4bd80 (running kernel: 7.0.2-6-pve)"
+    ]
+  },
+  "vmId": 102,
+  "transport": "Proxmox QEMU guest agent via BatchMode SSH",
+  "cleanup": {
+    "containerRemoved": true,
+    "preExistingRunningContainersUnchanged": true,
+    "guestKernel": "Linux media-vm 6.12.101+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.101-1 (2026-08-05) x86_64 GNU/Linux",
+    "guestHostname": "media-vm",
+    "guestOsRelease": "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"13\"\nVERSION=\"13 (trixie)\"\nVERSION_CODENAME=trixie\nDEBIAN_VERSION_FULL=13.7\nID=debian\nHOME_URL=\"https://www.debian.org/\"\nSUPPORT_URL=\"https://www.debian.org/support\"\nBUG_REPORT_URL=\"https://bugs.debian.org/\"\n",
+    "dockerVersion": "Docker version 29.6.1, build 8900f1d",
+    "retainedDirectory": "/tmp/uniquesingles-linux-20261028"
+  },
+  "container": {
+    "Id": "5f9c3f4e7d47908bca2a1955551b99d61c755b049c49e0ea8f06219696502a1b",
+    "Image": "sha256:811f1f0bd0de97a1b4ab6601898297010da18fc957312b1ed3bb62990683630c",
+    "State": {
+      "Status": "exited",
+      "Running": false,
+      "Paused": false,
+      "Restarting": false,
+      "OOMKilled": false,
+      "Dead": false,
+      "Pid": 0,
+      "ExitCode": 0,
+      "Error": "",
+      "StartedAt": "2026-10-28T14:22:47.351889723Z",
+      "FinishedAt": "2026-10-28T14:23:01.487679754Z"
+    },
+    "Mounts": [
+      {
+        "Type": "bind",
+        "Source": "/tmp/uniquesingles-linux-20261028",
+        "Destination": "/qualification",
+        "Mode": "",
+        "RW": true,
+        "Propagation": "rprivate"
+      }
+    ],
+    "HostConfig": {
+      "Binds": null,
+      "ContainerIDFile": "",
+      "LogConfig": {
+        "Type": "json-file",
+        "Config": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "NetworkMode": "none",
+      "PortBindings": {},
+      "RestartPolicy": {
+        "Name": "no",
+        "MaximumRetryCount": 0
+      },
+      "AutoRemove": false,
+      "VolumeDriver": "",
+      "VolumesFrom": null,
+      "ConsoleSize": [
+        0,
+        0
+      ],
+      "CapAdd": null,
+      "CapDrop": [
+        "ALL"
+      ],
+      "CgroupnsMode": "private",
+      "Dns": null,
+      "DnsOptions": [],
+      "DnsSearch": [],
+      "ExtraHosts": null,
+      "GroupAdd": null,
+      "IpcMode": "private",
+      "Cgroup": "",
+      "Links": null,
+      "OomScoreAdj": 0,
+      "PidMode": "",
+      "Privileged": false,
+      "PublishAllPorts": false,
+      "ReadonlyRootfs": false,
+      "SecurityOpt": [
+        "no-new-privileges"
+      ],
+      "UTSMode": "",
+      "UsernsMode": "",
+      "ShmSize": 67108864,
+      "Runtime": "runc",
+      "Isolation": "",
+      "CpuShares": 0,
+      "Memory": 1610612736,
+      "NanoCpus": 2000000000,
+      "CgroupParent": "",
+      "BlkioWeight": 0,
+      "BlkioWeightDevice": [],
+      "BlkioDeviceReadBps": [],
+      "BlkioDeviceWriteBps": [],
+      "BlkioDeviceReadIOps": [],
+      "BlkioDeviceWriteIOps": [],
+      "CpuPeriod": 0,
+      "CpuQuota": 0,
+      "CpuRealtimePeriod": 0,
+      "CpuRealtimeRuntime": 0,
+      "CpusetCpus": "",
+      "CpusetMems": "",
+      "Devices": [],
+      "DeviceCgroupRules": null,
+      "DeviceRequests": null,
+      "MemoryReservation": 0,
+      "MemorySwap": 1610612736,
+      "MemorySwappiness": null,
+      "OomKillDisable": null,
+      "PidsLimit": 256,
+      "Ulimits": [],
+      "CpuCount": 0,
+      "CpuPercent": 0,
+      "IOMaximumIOps": 0,
+      "IOMaximumBandwidth": 0,
+      "Mounts": [
+        {
+          "Type": "bind",
+          "Source": "/tmp/uniquesingles-linux-20261028",
+          "Target": "/qualification"
+        }
+      ],
+      "MaskedPaths": [
+        "/proc/acpi",
+        "/proc/asound",
+        "/proc/interrupts",
+        "/proc/kcore",
+        "/proc/keys",
+        "/proc/latency_stats",
+        "/proc/sched_debug",
+        "/proc/scsi",
+        "/proc/timer_list",
+        "/proc/timer_stats",
+        "/sys/devices/virtual/powercap",
+        "/sys/firmware"
+      ],
+      "ReadonlyPaths": [
+        "/proc/bus",
+        "/proc/fs",
+        "/proc/irq",
+        "/proc/sys",
+        "/proc/sysrq-trigger"
+      ]
+    },
+    "NetworkSettings": {
+      "SandboxID": "",
+      "SandboxKey": "",
+      "Ports": {},
+      "Networks": {
+        "none": {
+          "IPAMConfig": null,
+          "Links": null,
+          "Aliases": null,
+          "DriverOpts": null,
+          "GwPriority": 0,
+          "NetworkID": "40929b2d481a2edf164faf2d2622491972108f67585c210313bd7703f2bd5d8a",
+          "EndpointID": "",
+          "Gateway": "",
+          "IPAddress": "",
+          "MacAddress": "",
+          "IPPrefixLen": 0,
+          "IPv6Gateway": "",
+          "GlobalIPv6Address": "",
+          "GlobalIPv6PrefixLen": 0,
+          "DNSNames": null
+        }
+      }
+    }
+  },
+  "qualificationStdout": [
+    "metadata-report 1 artists scanned, 0 singles cleaned, 1 skipped, 0 flagged for review, 1 exact duplicates (report only)",
+    "warm-cache-report 1 artists scanned, 0 singles cleaned, 1 skipped, 0 flagged for review, 1 exact duplicates (report only)",
+    "changed-source-rejects-cached-evidence 1 artists scanned, 0 singles cleaned, 1 skipped, 1 flagged for review",
+    "decoder-absent 1 artists scanned, 0 singles cleaned, 1 skipped, 1 flagged for review",
+    "connect-precedence-report 1 artists scanned, 0 singles cleaned, 1 skipped, 0 flagged for review, 1 exact duplicates (report only)",
+    "self-source-is-excluded 1 artists scanned, 0 singles cleaned, 1 skipped, 0 flagged for review",
+    "unmonitored-source-keeps-candidate 1 artists scanned, 0 singles cleaned, 1 skipped, 0 flagged for review",
+    "exclusive-whole-release-keep 1 artists scanned, 0 singles cleaned, 1 skipped, 0 flagged for review",
+    "manual-import-report Manually imported 1 files",
+    "connect-explicit-cleanup 1 artists scanned, 1 singles cleaned, 0 skipped, 0 flagged for review",
+    "manual-import-opt-in Manually imported 1 files",
+    "scheduled-opt-in 1 artists scanned, 0 singles cleaned, 1 skipped, 0 flagged for review",
+    "restart-scan 1 artists scanned, 0 singles cleaned, 1 skipped, 0 flagged for review",
+    "equivalent-singles-retain-survivor 1 artists scanned, 1 singles cleaned, 2 skipped, 0 flagged for review",
+    "Evidence: /qualification/_temp/issue42-54736e26802747fba9cfd33fe61766e7"
+  ],
+  "decoderAssessmentSha256": "7fd1e16e0196692b96aa21003c8514964f94eb6a329604a7de1079f3a34078dc",
+  "decoderRuntimeReceiptSha256": "836922814f069ad008f4b35eb91c3f8aaa68b19511010dd06373268f1ad32c74"
+}

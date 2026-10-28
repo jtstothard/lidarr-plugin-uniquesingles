@@ -1,5 +1,10 @@
 # Issue #42: disposable exact-audio qualification
 
+Follow-up: [isolated Linux VM102 qualification](issue-37-linux.md) passed all
+14 native stages on 2026-10-28 with its separately identified DLL and FFmpeg build.
+The Linux boundary statements below describe the earlier macOS runs; production
+deployment and Windows remain unqualified.
+
 Parent specification: [#37](https://github.com/jtstothard/lidarr-plugin-uniquesingles/issues/37).
 Ticket: [#42](https://github.com/jtstothard/lidarr-plugin-uniquesingles/issues/42).
 Run date: 2026-10-28. Native qualification runner commit:
