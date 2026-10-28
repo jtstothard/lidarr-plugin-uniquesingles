@@ -89,3 +89,18 @@ If you find this plugin useful, consider buying me a coffee:
 ### Optional exact FLAC reports
 
 Enable **Exact FLAC analysis (report only)** in the matching settings to verify unresolved downloaded singles locally. It defaults off and requires an operator-provided FFmpeg executable in the Lidarr host/container. Complete verified releases are reported without additional cleanup. Existing metadata cleanup still runs. See [decoder, limits and deployment notes](docs/exact-flac-analysis.md).
+
+### Keep and review outcomes
+
+Scans and imports report `keep-exclusive` when any evaluated downloaded track has
+no eligible match. This protects the whole release, even if another track has a
+title-only match. Track diagnostics remain available, but that release does not
+increase the review-needed count. “Exclusive” means unmatched against the current
+eligible comparison sources, not proof that the recording exists nowhere else.
+
+With **Tier 3 action** set to **Flag only**, releases whose remaining uncertainty
+is title-only matching report `review-needed` (`outcome=unresolved-review`). Each
+release counts once, even with several title-only tracks. Logs include candidate
+release/track identity, matched source identity, and the reason for keeping or
+reviewing the release. Existing cleanup settings, matching tolerance, source
+eligibility, and no-file Tier-1 unmonitoring continue to apply.

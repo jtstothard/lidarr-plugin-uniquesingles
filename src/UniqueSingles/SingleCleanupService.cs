@@ -350,7 +350,7 @@ public class SingleCleanupService : ISingleCleanupService
             }
         }
 
-        LogMatchDecision(artist, single, comparisonAlbumContext, check, options.Tier3Action);
+        LogMatchDecision(artist, single, comparisonAlbumContext, check, options.Tier3Action, comparisonTracks);
 
         if (!check.IsRedundant)
         {
@@ -368,7 +368,7 @@ public class SingleCleanupService : ISingleCleanupService
             }
             else
             {
-                if (options.Tier3Action == Tier3Action.FlagOnly && check.TrackResults.Any(r => r.Tier == MatchTier.Tier3_TitleOnly))
+                if (NeedsReview(check, options.Tier3Action))
                 {
                     reviewNeeded = 1;
                 }
@@ -550,7 +550,14 @@ public class SingleCleanupService : ISingleCleanupService
         return GetDownloadedAlbumOrEpTracks(albums, CreateLegacyOptions());
     }
 
-    private void LogMatchDecision(Artist artist, Album single, Album? comparisonAlbumContext, SingleRedundancyCheck check, Tier3Action tier3Action = Tier3Action.FlagOnly)
+    private static bool NeedsReview(SingleRedundancyCheck check, Tier3Action action)
+    {
+        return action == Tier3Action.FlagOnly
+            && !check.TrackResults.Any(r => r.Tier == MatchTier.NoMatch)
+            && check.TrackResults.Any(r => r.Tier == MatchTier.Tier3_TitleOnly);
+    }
+
+    private void LogMatchDecision(Artist artist, Album single, Album? comparisonAlbumContext, SingleRedundancyCheck check, Tier3Action tier3Action = Tier3Action.FlagOnly, Dictionary<int, List<Track>>? comparisonTracks = null)
     {
         var decision = check.IsRedundant ? "cleanup-approved" : "cleanup-skipped";
 
@@ -559,12 +566,40 @@ public class SingleCleanupService : ISingleCleanupService
         {
             decision = "cleanup-approved";
         }
+
+        if (check.TrackResults.Any(r => r.Tier == MatchTier.NoMatch))
+        {
+            decision = "keep-exclusive";
+        }
+        else if (NeedsReview(check, tier3Action))
+        {
+            decision = "review-needed";
+        }
+
+        var reason = check.SummaryReason;
+        if (!check.IsRedundant && decision == "cleanup-approved")
+        {
+            reason = "All tracks have eligible matches; configured Tier 3 AutoClean permits title-only cleanup.";
+        }
+        else if (decision == "cleanup-skipped" && tier3Action == Tier3Action.Skip)
+        {
+            reason = "Title-only evidence is unresolved; configured Tier 3 Skip keeps this release without a review flag.";
+        }
+
+        _logger.Info(
+            "UniqueSingles {0}: artistId={1} artist='{2}' singleId={3} single='{4}' reason='{5}' outcome={6}",
+            decision, artist.Id, artist.Name, single.Id, single.Title, reason,
+            decision == "review-needed" ? "unresolved-review" : decision);
+
         foreach (var result in check.TrackResults)
         {
-            var isReview = result.Tier == MatchTier.Tier3_TitleOnly && tier3Action == Tier3Action.FlagOnly;
+            // Use the repository grouping: Track.AlbumId may be unset on materialized tracks.
+            var matchedAlbumId = result.MatchedTrack == null ? (int?)null
+                : comparisonTracks?.Where(entry => entry.Value.Contains(result.MatchedTrack))
+                    .Select(entry => (int?)entry.Key).FirstOrDefault() ?? result.MatchedTrack.AlbumId;
             _logger.Info(
-                "UniqueSingles {0}: artistId={1} artist='{2}' singleId={3} single='{4}' comparisonAlbumId={5} comparisonAlbum='{6}' track='{7}' matchedTrack='{8}' matchTier={9} confidence={10} reason='{11}' summary='{12}'",
-                isReview ? "review-needed" : decision,
+                "UniqueSingles {0}: artistId={1} artist='{2}' singleId={3} single='{4}' comparisonAlbumId={5} comparisonAlbum='{6}' track='{7}' matchedTrack='{8}' matchTier={9} confidence={10} reason='{11}' summary='{12}' trackId={13} matchedAlbumId={14} matchedTrackId={15}",
+                "track-evidence",
                 artist.Id,
                 artist.Name,
                 single.Id,
@@ -576,7 +611,10 @@ public class SingleCleanupService : ISingleCleanupService
                 result.Tier,
                 result.Confidence,
                 result.Reason,
-                check.SummaryReason);
+                check.SummaryReason,
+                result.SingleTrack.Id,
+                matchedAlbumId,
+                result.MatchedTrack?.Id);
         }
 
         if (check.TrackResults.Count == 0)
