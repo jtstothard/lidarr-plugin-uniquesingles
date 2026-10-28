@@ -75,7 +75,7 @@ stored checksums alone never establish equality. Missing/zero MD5 is permitted o
 with the same full decoding, frame-integrity and sample-count checks.
 
 One shared options snapshot permits 32 candidate pairs across the command/import,
-including multiple artists; each pair decodes both files uncached. One process-wide
+including multiple artists; cache hits consume the same pair budget as misses. One process-wide
 slot bounds decoder concurrency. Each pair has a 30-second deadline including slot
 wait, cancellation, reading and both decodes. Each compressed input is at most
 64 MiB; each decoded file at most 256 MiB; PCM is hashed incrementally and diagnostics
@@ -143,3 +143,34 @@ must supply the same content evidence and cannot bypass these checks. Filesystem
 repository calls are not one atomic transaction: external changes after the final
 check remain a race, as with existing media deletion. No production settings were
 activated. Disposable native dispatcher acceptance under #37 remains outstanding.
+
+## Content evidence cache (#40)
+
+The verifier keeps at most 1024 successfully decoded file descriptors process-wide,
+with FIFO eviction. It stores no audio buffers and persists nothing across restarts.
+Keys include the full compressed-content SHA-256, policy constant, resolved executable
+path and SHA-256 of the actual executable bytes (not a version label). Every lookup
+reads the complete bounded current file; paths, lengths and timestamps grant no trust.
+Different audio can reuse successful per-file decodes; failed/unavailable decodes are
+never cached. Changing the policy or executable bytes forces fresh decoding.
+
+Both paths and executable are hashed again before evidence returns, for fresh and
+cached comparisons alike. Disappearance, replacement, cancellation or identity mismatch
+returns unavailable. Concurrent changes after this final observation remain possible:
+#41 must revalidate both evidence FileDigest values immediately before cleanup and
+recheck source eligibility/survivor protections. Compare does not issue deletion permits.
+The immutable AudioEvidence/AudioTrackEvidence contract is unchanged.
+
+One process-wide slot serializes identity reads, cache access and decoding. The existing
+32-pair command/import budget applies even to hits; each comparison still has the shared
+30-second deadline. Inputs remain 64 MiB each, decoder identity reads at most 256 MiB,
+and decoded PCM remains capped at 256 MiB. Cancellation is checked between identity
+read chunks; an OS filesystem read itself can block beyond the deadline. No separate
+scheduler, external cache or performance guarantee is introduced. A verifier constructed
+with useCache:false follows the same identity and safety checks without evidence reuse.
+
+Use a directly configured, pinned decoder executable. Executable hashing identifies
+that file/build; it does not attest transitive shared libraries, interpreter scripts or
+runtime-loaded plugins. Deployment changes to those dependencies require restarting
+Lidarr to discard process-local evidence and rerunning decoder qualification. Linux,
+Windows, production deployment and live dispatcher acceptance remain unverified.

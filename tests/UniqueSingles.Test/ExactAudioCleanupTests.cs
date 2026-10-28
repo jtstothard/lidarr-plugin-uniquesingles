@@ -187,6 +187,39 @@ public partial class SingleCleanupServiceTests
         Assert.True(h.Single.Monitored || h.Source.Monitored);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ExactAudio_RepeatedAnalysisRevalidatesBothPathsAndPreservesFiles(int route)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "uniquesingles-cache-service-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var candidate = Path.Combine(directory, "candidate.flac");
+            var source = Path.Combine(directory, "source.flac");
+            System.IO.File.Copy(AudioFixture("original.flac"), candidate);
+            System.IO.File.Copy(AudioFixture("same-tags.flac"), source);
+            var h = AudioHarness("same-tags.flac");
+            using var log = h.Log;
+            h.Files.WithFiles(100, File(11, 100, source)).WithFiles(200, File(21, 200, candidate));
+            SingleCleanupOptions Options() => new UniqueSinglesSettings { ExactAudioAnalysis = true }.ToCleanupOptions();
+            Assert.Equal(1, AudioRun(h, route, Options()).ExactAudioReports);
+            Assert.Equal(1, AudioRun(h, route, Options()).ExactAudioReports);
+            System.IO.File.Copy(AudioFixture("late-sample.flac"), source, true);
+            Assert.Equal(0, AudioRun(h, route, Options()).ExactAudioReports);
+            System.IO.File.Copy(AudioFixture("same-tags.flac"), source, true);
+            System.IO.File.Copy(AudioFixture("late-sample.flac"), candidate, true);
+            Assert.Equal(0, AudioRun(h, route, Options()).ExactAudioReports);
+            System.IO.File.Delete(candidate);
+            Assert.Equal(0, AudioRun(h, route, Options()).ExactAudioReports);
+            Assert.Empty(h.Albums.SetMonitoredCalls);
+            Assert.Empty(h.Deletes.DeletedFiles);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
     private static string AudioFixture(string name) => System.IO.Path.Combine(AppContext.BaseDirectory, "AudioFixtures", name);
 
     [Theory]
