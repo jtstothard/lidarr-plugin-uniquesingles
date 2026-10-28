@@ -104,3 +104,9 @@ release counts once, even with several title-only tracks. Logs include candidate
 release/track identity, matched source identity, and the reason for keeping or
 reviewing the release. Existing cleanup settings, matching tolerance, source
 eligibility, and no-file Tier-1 unmonitoring continue to apply.
+
+Enable **Exact FLAC cleanup** separately to permit cleanup after complete exact
+coverage and immediate source/content revalidation. It defaults off and also enables
+analysis. Analysis alone remains report-only. Missing, changed or unverifiable files
+protect the release; every track needs a retained eligible counterpart. See the
+[cleanup contract](docs/exact-flac-analysis.md#explicit-exact-cleanup-41).

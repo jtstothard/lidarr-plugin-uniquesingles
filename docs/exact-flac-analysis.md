@@ -3,7 +3,7 @@
 ## Operator contract
 
 `ExactAudioAnalysis` defaults to false, including deserialization of older settings.
-Enabling it only reports otherwise unresolved downloaded singles. It never adds
+Without the separate `ExactAudioCleanup` opt-in, enabling it only reports otherwise unresolved downloaded singles. It adds no
 unmonitor/delete authority, even with a fully verified release. Existing metadata
 cleanup and the no-file Tier-1 path retain their existing behavior. In particular,
 this setting is not a global dry run of metadata cleanup. Connect matching settings
@@ -121,3 +121,25 @@ tag/compression differences, wrong catalog IDs/durations, full multi-track cover
 exclusive/missing/alternate tracks, source eligibility/self-exclusion, late samples,
 forged/zero MD5, false header rates, corruption, truncation, formats, absence, budgets
 and cancellation. Lower tests check 24-bit fidelity and decoder deadlines.
+
+## Explicit exact cleanup (#41)
+
+`ExactAudioCleanup` defaults false, including older saved settings. It independently
+opts into analysis plus whole-release cleanup; analysis alone remains report-only.
+Every catalog track must have a downloaded, fully verified retained counterpart.
+The existing metadata and no-file Tier-1 paths are unchanged.
+
+Before unmonitoring and again immediately before each file deletion, cleanup reloads
+source eligibility and track/file mappings and compares current compressed-file
+SHA-256 content against the verified snapshots. Extra unverified candidate files,
+changed coverage, missing/replaced files, ineligible sources and lookup/hash failures
+abort exact approval. Sources removed earlier in the operation cannot justify later
+cleanup. An unmonitor failure prevents deletion; a later validation/deletion failure
+leaves the release unmonitored and preserves remaining files. Logs record verification,
+revalidation action, abort reason and normal unmonitor/delete outcomes.
+
+This contract consumes immutable verifier evidence and works uncached; a #40 wrapper
+must supply the same content evidence and cannot bypass these checks. Filesystem and
+repository calls are not one atomic transaction: external changes after the final
+check remain a race, as with existing media deletion. No production settings were
+activated. Disposable native dispatcher acceptance under #37 remains outstanding.

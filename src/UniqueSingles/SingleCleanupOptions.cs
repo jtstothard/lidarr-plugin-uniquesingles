@@ -13,6 +13,7 @@ public class SingleCleanupOptions
     /// Gets the duration tolerance in milliseconds for Tier 2 matching.
     /// Clamped to minimum 1000 ms for safety.
     /// </summary>
+    public bool ExactAudioCleanup { get; }
     public bool ExactAudioAnalysis { get; }
     public string ExactAudioDecoderPath { get; }
     public System.Threading.CancellationToken AudioCancellation { get; }
@@ -39,9 +40,11 @@ public class SingleCleanupOptions
         bool exactAudioAnalysis = false,
         string exactAudioDecoderPath = "ffmpeg",
         System.Threading.CancellationToken audioCancellation = default,
-        AudioAnalysisBudget? audioBudget = null)
+        AudioAnalysisBudget? audioBudget = null,
+        bool exactAudioCleanup = false)
     {
-        ExactAudioAnalysis = exactAudioAnalysis;
+        ExactAudioCleanup = exactAudioCleanup;
+        ExactAudioAnalysis = exactAudioAnalysis || exactAudioCleanup;
         ExactAudioDecoderPath = string.IsNullOrWhiteSpace(exactAudioDecoderPath) ? "ffmpeg" : exactAudioDecoderPath;
         AudioCancellation = audioCancellation;
         AudioBudget = audioBudget ?? new AudioAnalysisBudget();

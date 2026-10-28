@@ -960,6 +960,8 @@ public partial class SingleCleanupServiceTests
             _albums = albums.ToList();
         }
 
+        public Action? BeforeArtistLookup { get; set; }
+        public Action? AfterUnmonitor { get; set; }
         public bool ThrowOnSetAlbumMonitored { get; set; }
         public List<int> ArtistAlbumLookupIds { get; } = new();
         public List<int> AllLibraryLookupCalls { get; } = new();
@@ -979,6 +981,7 @@ public partial class SingleCleanupServiceTests
 
         public List<Album> GetAlbumsByArtist(int artistId)
         {
+            BeforeArtistLookup?.Invoke();
             ArtistAlbumLookupIds.Add(artistId);
             return _albums;
         }
@@ -1014,6 +1017,7 @@ public partial class SingleCleanupServiceTests
             {
                 throw new InvalidOperationException("unmonitor failed");
             }
+            AfterUnmonitor?.Invoke();
         }
 
         public void SetMonitored(IEnumerable<int> ids, bool monitored)

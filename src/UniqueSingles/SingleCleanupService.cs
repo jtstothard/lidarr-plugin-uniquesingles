@@ -339,6 +339,7 @@ public class SingleCleanupService : ISingleCleanupService
             return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
         }
 
+        ExactAudioReleaseReport? cleanupReport = null;
         var check = TrackMatcher.CheckSingle(downloadedSingleTracks, albumTracks, options.DurationToleranceMs);
         if (!check.IsRedundant && options.ExactAudioAnalysis)
         {
@@ -346,7 +347,10 @@ public class SingleCleanupService : ISingleCleanupService
                 .Analyze(single, singleTracks, comparisonTracks, options);
             if (report.Complete)
             {
-                return new CleanupResult(1, 0, 1, 0, 0, 0, exactAudioReports: 1);
+                if (!options.ExactAudioCleanup)
+                    return new CleanupResult(1, 0, 1, 0, 0, 0, exactAudioReports: 1);
+                cleanupReport = report;
+                check = new SingleRedundancyCheck(true, check.TrackResults, "Complete verified exact-audio coverage; explicit cleanup opt-in.");
             }
         }
 
@@ -378,6 +382,9 @@ public class SingleCleanupService : ISingleCleanupService
             }
         }
 
+        if (cleanupReport != null && !RevalidateExactCleanup(artist, single, cleanupReport, options))
+            return new CleanupResult(1, 0, 1, 0, 0, 0);
+
         if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext, check))
         {
             unmonitorFailures = 1;
@@ -389,7 +396,8 @@ public class SingleCleanupService : ISingleCleanupService
         // other and both be deleted.
         comparisonTracks.Remove(single.Id);
 
-        if (!TryDeleteSingleFiles(artist, single, comparisonAlbumContext))
+        if (!TryDeleteSingleFiles(artist, single, comparisonAlbumContext,
+            cleanupReport == null ? null : file => RevalidateExactCleanup(artist, single, cleanupReport, options, file)))
         {
             cleaned = 1; // Unmonitored successfully
             deleteFailures = 1;
@@ -398,6 +406,64 @@ public class SingleCleanupService : ISingleCleanupService
 
         cleaned = 1;
         return new CleanupResult(candidatesChecked, cleaned, 0, 0, 0, 0);
+    }
+
+    // Re-read repository identities and hash actual bytes. Snapshot evidence (including cached
+    // evidence) is never authority on its own. Repeated immediately before each destructive call.
+    private bool RevalidateExactCleanup(Artist artist, Album single, ExactAudioReleaseReport report,
+        SingleCleanupOptions options, TrackFile? deleting = null)
+    {
+        try
+        {
+            if (options.AudioCancellation.IsCancellationRequested) throw new InvalidOperationException("cancelled");
+            var albums = _albumService.GetAlbumsByArtist(artist.Id);
+            var sources = GetComparisonTracksByAlbum(albums, options);
+            var required = _trackService.GetTracksByAlbum(single.Id);
+            var verified = report.Tracks.Where(t => t.Evidence.Status == AudioEvidenceStatus.VerifiedExact).ToList();
+            if (!report.Complete || required == null || required.Count == 0 || required.Count != verified.Count)
+                throw new InvalidOperationException("coverage-changed");
+            var candidateFiles = _mediaFileService.GetFilesByAlbum(single.Id);
+            // No extra unverified files may be swept up by whole-release deletion.
+            if (candidateFiles.Any(f => !required.Any(t => t.TrackFileId == f.Id)))
+                throw new InvalidOperationException("unverified-extra-file");
+            foreach (var track in required)
+            {
+                var evidence = verified.Single(e => e.CandidateTrackId == track.Id);
+                if (evidence.SourceReleaseId == single.Id || !sources.TryGetValue(evidence.SourceReleaseId!.Value, out var sourceTracks))
+                    throw new InvalidOperationException("source-ineligible");
+                var source = sourceTracks.Single(t => t.Id == evidence.SourceTrackId);
+                var sourceFile = _mediaFileService.GetFilesByAlbum(evidence.SourceReleaseId.Value).Single(f => f.Id == source.TrackFileId);
+                if (candidateFiles.Any(f => string.Equals(System.IO.Path.GetFullPath(f.Path), System.IO.Path.GetFullPath(sourceFile.Path), StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidOperationException("source-shares-candidate-path");
+                if (sourceFile.Path != evidence.SourcePath || !ContentMatches(sourceFile.Path, evidence.Evidence.Source?.FileDigest))
+                    throw new InvalidOperationException("source-content-changed");
+                if (deleting == null || track.TrackFileId == deleting.Id)
+                {
+                    var candidateFile = candidateFiles.Single(f => f.Id == track.TrackFileId);
+                    if (!track.HasFile || candidateFile.Path != evidence.CandidatePath
+                        || (deleting != null && deleting.Path != candidateFile.Path)
+                        || !ContentMatches(candidateFile.Path, evidence.Evidence.Candidate?.FileDigest))
+                        throw new InvalidOperationException("candidate-content-changed");
+                }
+            }
+            if (deleting != null && !required.Any(t => t.TrackFileId == deleting.Id))
+                throw new InvalidOperationException("unverified-delete-file");
+            _logger.Info("UniqueSingles exact-audio cleanup: candidateReleaseId={0} decision=revalidated action={1}", single.Id, deleting == null ? "unmonitor" : "delete");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn("UniqueSingles exact-audio cleanup: candidateReleaseId={0} decision=keep reason=revalidation-failed detail={1}", single.Id, ex.Message);
+            return false;
+        }
+    }
+
+    private static bool ContentMatches(string path, string? digest)
+    {
+        if (string.IsNullOrEmpty(digest)) return false;
+        using var stream = System.IO.File.OpenRead(path);
+        if (stream.Length > 64 * 1024 * 1024) return false;
+        return string.Equals(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)), digest, StringComparison.OrdinalIgnoreCase);
     }
 
     private void CheckAndCleanSingle(Artist artist, Album single, Album? comparisonAlbumContext, List<Track> albumTracks)
@@ -567,11 +633,11 @@ public class SingleCleanupService : ISingleCleanupService
             decision = "cleanup-approved";
         }
 
-        if (check.TrackResults.Any(r => r.Tier == MatchTier.NoMatch))
+        if (!check.IsRedundant && check.TrackResults.Any(r => r.Tier == MatchTier.NoMatch))
         {
             decision = "keep-exclusive";
         }
-        else if (NeedsReview(check, tier3Action))
+        else if (!check.IsRedundant && NeedsReview(check, tier3Action))
         {
             decision = "review-needed";
         }
@@ -663,7 +729,7 @@ public class SingleCleanupService : ISingleCleanupService
         }
     }
 
-    private bool TryDeleteSingleFiles(Artist artist, Album single, Album? comparisonAlbumContext)
+    private bool TryDeleteSingleFiles(Artist artist, Album single, Album? comparisonAlbumContext, Func<TrackFile, bool>? validate = null)
     {
         List<TrackFile> files;
         try
@@ -702,6 +768,7 @@ public class SingleCleanupService : ISingleCleanupService
         {
             try
             {
+                if (validate != null && !validate(file)) return false;
                 _deleteMediaFiles.DeleteTrackFile(artist, file);
                 _logger.Info(
                     "UniqueSingles delete success: artistId={0} artist='{1}' singleId={2} single='{3}' comparisonAlbumId={4} comparisonAlbum='{5}' trackFileId={6} path='{7}'",

@@ -44,6 +44,149 @@ public partial class SingleCleanupServiceTests
         Assert.Contains(log.InfoMessages, m => m.Contains("sourceTrackId=1") && m.Contains("candidateTrackId=2"));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ExactCleanup_ExplicitOptInCleansAndRetainsSource(int route)
+    {
+        var h = AudioHarness("same-tags.flac");
+        using var log = h.Log;
+        var settings = new UniqueSinglesSettings();
+        Assert.False(settings.ToCleanupOptions().ExactAudioCleanup);
+        settings.ExactAudioCleanup = true;
+        var result = AudioRun(h, route, settings.ToCleanupOptions());
+        Assert.Equal(1, result.Cleaned);
+        Assert.False(h.Single.Monitored);
+        Assert.True(h.Source.Monitored);
+        Assert.Single(h.Deletes.DeletedFiles);
+    }
+
+    [Fact]
+    public void ExactCleanup_SharedFilePathCannotBeItsOwnSurvivor()
+    {
+        var h = AudioHarness("same-tags.flac");
+        using var log = h.Log;
+        h.Files.WithFiles(100, File(11, 100, AudioFixture("original.flac")));
+        var result = AudioRun(h, 0, new UniqueSinglesSettings { ExactAudioCleanup = true }.ToCleanupOptions());
+        Assert.Equal(0, result.Cleaned);
+        Assert.Empty(h.Albums.SetMonitoredCalls);
+        Assert.Empty(h.Deletes.DeletedFiles);
+    }
+
+    [Theory]
+    [InlineData("source-missing")]
+    [InlineData("source-replaced")]
+    [InlineData("candidate-mutated")]
+    [InlineData("unmonitored")]
+    [InlineData("excluded")]
+    [InlineData("type")]
+    [InlineData("track-missing")]
+    public void ExactCleanup_RevalidatesAfterVerificationOnEveryRoute(string change)
+    {
+        for (var route = 0; route < 3; route++)
+        {
+            var h = AudioHarness("same-tags.flac");
+            using var log = h.Log;
+            var directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString());
+            System.IO.Directory.CreateDirectory(directory);
+            try
+            {
+                var candidate = System.IO.Path.Combine(directory, "candidate.flac");
+                var source = System.IO.Path.Combine(directory, "source.flac");
+                System.IO.File.Copy(AudioFixture("original.flac"), candidate);
+                System.IO.File.Copy(AudioFixture("same-tags.flac"), source);
+                h.Files.WithFiles(100, File(11, 100, source)).WithFiles(200, File(21, 200, candidate));
+                var lookups = 0;
+                h.Albums.BeforeArtistLookup = () =>
+                {
+                    if (++lookups != 2) return;
+                    if (change == "source-missing") System.IO.File.Delete(source);
+                    if (change == "source-replaced") System.IO.File.Copy(AudioFixture("late-sample.flac"), source, true);
+                    if (change == "candidate-mutated") System.IO.File.Copy(AudioFixture("late-sample.flac"), candidate, true);
+                    if (change == "unmonitored") h.Source.Monitored = false;
+                    if (change == "excluded") h.Source.SecondaryTypes = new() { SecondaryAlbumType.Live };
+                    if (change == "type") h.Source.AlbumType = "Single";
+                    if (change == "track-missing") h.SourceTrack.TrackFileId = 0;
+                };
+                var result = AudioRun(h, route, new UniqueSinglesSettings { ExactAudioCleanup = true }.ToCleanupOptions());
+                Assert.Equal(0, result.Cleaned);
+                Assert.True(h.Single.Monitored);
+                Assert.Empty(h.Albums.SetMonitoredCalls);
+                Assert.Empty(h.Deletes.DeletedFiles);
+                Assert.Contains(log.InfoMessages, m => m.Contains("VerifiedExact"));
+            }
+            finally { System.IO.Directory.Delete(directory, true); }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExactCleanup_PreservesFailureHandling(bool deleteFailure)
+    {
+        var h = AudioHarness("same-tags.flac");
+        using var log = h.Log;
+        h.Albums.ThrowOnSetAlbumMonitored = !deleteFailure;
+        h.Deletes.ThrowOnDelete = deleteFailure;
+        var result = AudioRun(h, 0, new UniqueSinglesSettings { ExactAudioCleanup = true }.ToCleanupOptions());
+        Assert.Equal(deleteFailure ? 1 : 0, result.DeleteFailures);
+        Assert.Equal(deleteFailure ? 0 : 1, result.UnmonitorFailures);
+        if (!deleteFailure) Assert.Empty(h.Deletes.DeletedFiles);
+    }
+
+    [Fact]
+    public void ExactCleanup_SourceBecomesIneligibleAfterUnmonitor_PreventsDeletion()
+    {
+        var h = AudioHarness("same-tags.flac");
+        using var log = h.Log;
+        h.Albums.AfterUnmonitor = () => h.Source.Monitored = false;
+        var result = AudioRun(h, 0, new UniqueSinglesSettings { ExactAudioCleanup = true }.ToCleanupOptions());
+        Assert.Equal(1, result.DeleteFailures);
+        Assert.Empty(h.Deletes.DeletedFiles);
+        Assert.False(h.Single.Monitored);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ExactCleanup_CompleteMultitrackCoverageCleansWholeRelease(int route)
+    {
+        var retainedStereo = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid() + ".flac");
+        System.IO.File.Copy(AudioFixture("stereo.flac"), retainedStereo);
+        try
+        {
+            var h = AudioHarness("same-tags.flac");
+            using var log = h.Log;
+            var second = Track("Other", 100000, "other-candidate", 22);
+            second.Id = 3;
+            var source = Track("Other", 900000, "other-source", 12);
+            source.Id = 4;
+            h.Tracks.WithTracks(200, h.Candidate, second).WithTracks(100, h.SourceTrack, source);
+            h.Files.WithFiles(200, File(21, 200, AudioFixture("original.flac")), File(22, 200, AudioFixture("stereo.flac")))
+                .WithFiles(100, File(11, 100, AudioFixture("same-tags.flac")), File(12, 100, retainedStereo));
+            var result = AudioRun(h, route, new UniqueSinglesSettings { ExactAudioCleanup = true }.ToCleanupOptions());
+            Assert.Equal(1, result.Cleaned);
+            Assert.Equal(2, h.Deletes.DeletedFiles.Count);
+            Assert.True(h.Source.Monitored);
+        }
+        finally { System.IO.File.Delete(retainedStereo); }
+    }
+
+    [Fact]
+    public void ExactCleanup_EquivalentSinglesRetainOneSurvivor()
+    {
+        var h = AudioHarness("same-tags.flac");
+        using var log = h.Log;
+        h.Source.AlbumType = "Single";
+        var result = AudioRun(h, 0, new UniqueSinglesSettings { ExactAudioCleanup = true, ReleaseTypesToCheck = "Single" }.ToCleanupOptions());
+        Assert.Equal(1, result.Cleaned);
+        Assert.Single(h.Albums.SetMonitoredCalls);
+        Assert.Single(h.Deletes.DeletedFiles);
+        Assert.True(h.Single.Monitored || h.Source.Monitored);
+    }
+
     private static string AudioFixture(string name) => System.IO.Path.Combine(AppContext.BaseDirectory, "AudioFixtures", name);
 
     [Theory]
@@ -64,7 +207,7 @@ public partial class SingleCleanupServiceTests
         {
             var harness = AudioHarness(sourceFixture);
             using var log = harness.Log;
-            var result = AudioRun(harness, route, new UniqueSinglesSettings { ExactAudioAnalysis = true }.ToCleanupOptions());
+            var result = AudioRun(harness, route, new UniqueSinglesSettings { ExactAudioCleanup = true }.ToCleanupOptions());
             Assert.Equal(0, result.ExactAudioReports);
             Assert.Equal(1, result.ReviewNeeded);
             Assert.Equal(0, result.Cleaned);
@@ -88,7 +231,7 @@ public partial class SingleCleanupServiceTests
         {
             var h = AudioHarness("same-tags.flac");
             using var log = h.Log;
-            var options = new UniqueSinglesSettings { ExactAudioAnalysis = true }.ToCleanupOptions();
+            var options = new UniqueSinglesSettings { ExactAudioCleanup = true }.ToCleanupOptions();
             if (protection == "exclusive") h.Tracks.WithTracks(200, h.Candidate, Track("Exclusive", 9000, "exclusive", 22));
             if (protection == "missing-track") h.Tracks.WithTracks(200, h.Candidate, Track("Song", 9000, "missing", 0));
             if (protection == "second-version")
