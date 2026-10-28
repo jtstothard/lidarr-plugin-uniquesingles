@@ -240,7 +240,13 @@ try:
     results['tasksBeforeRestart'] = before
     stop()
     start()
-    results['tasksAfterRestart'] = api('system/task')
+    # The HTTP listener is ready before ApplicationStarted handlers finish restoring
+    # plugin tasks. Wait for that lifecycle outcome, not an arbitrary startup sleep.
+    for _ in range(120):
+        results['tasksAfterRestart'] = api('system/task')
+        if any(x['taskName'] == 'UniqueSinglesScan' for x in results['tasksAfterRestart']):
+            break
+        time.sleep(.25)
     scheduled_before = next(x for x in before if x['taskName'] == 'UniqueSinglesScan')
     scheduled_after = next(x for x in results['tasksAfterRestart'] if x['taskName'] == 'UniqueSinglesScan')
     assert scheduled_before['interval'] == scheduled_after['interval'] == 10080
