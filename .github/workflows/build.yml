@@ -33,6 +33,14 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - name: Install audio test decoder
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
+          command -v ffmpeg
+          ffmpeg -version
+          dpkg-query --show ffmpeg
+
       - name: Prepare pinned Lidarr binaries
         run: |
           python3 -m unittest discover -s tests -p 'test_prepare_lidarr.py'

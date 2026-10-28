@@ -73,3 +73,8 @@ by `PluginIdentitySmokeTests`; CI publishes that same package. After the full
 Release/Python gates, run `python3 scripts/qualify-disposable-host.py` with Python
 3.12+ for the fresh-database, synthetic-library native command/import qualification.
 See [operations](docs/exact-flac-analysis.md) and [acceptance evidence](docs/acceptance/issue-42.md).
+
+CI explicitly installs the Ubuntu FFmpeg package before running the audio tests
+and records its package/build version in the job log. This is a test dependency;
+the plugin archive does not bundle a decoder. Do not rely on hosted runners having
+FFmpeg preinstalled.
