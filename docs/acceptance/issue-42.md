@@ -2,10 +2,13 @@
 
 Parent specification: [#37](https://github.com/jtstothard/lidarr-plugin-uniquesingles/issues/37).
 Ticket: [#42](https://github.com/jtstothard/lidarr-plugin-uniquesingles/issues/42).
-Run date: 2026-10-28. Implementation tested in the native host:
+Run date: 2026-10-28. Native qualification runner commit:
+`3183aede5ea25b03f082f93e2c5ae6884dc02b47`. Product implementation commit:
 `e967c0ffffcb1562047b0152057b128005bb5886`, descended from integration
-`529de41d0f9ad69f68de89f5cd7e5586417db75e` (#38–41). Subsequent acceptance
-receipt commits change documentation only. No production deployment/settings/library
+`529de41d0f9ad69f68de89f5cd7e5586417db75e` (#38–41). The final clean Release build was performed at
+`91ed0ebbb54a3835a3ec19eed699607131b3ee73`; the subsequent runner change waits for
+ApplicationStarted task restoration after the HTTP listener becomes ready. The
+product source is unchanged. Subsequent acceptance receipt commits change docs only. No production deployment/settings/library
 were used. All deleted files were generated synthetic FLAC in this run directory.
 
 ## Host and reproducible commands
@@ -18,7 +21,7 @@ were used. All deleted files were generated synthetic FLAC in this run directory
   `codesign --force --sign - <disposable-host>/Lidarr` enabled startup. Only the
   extracted disposable executable was signed; no global security setting changed.
 - Tested plugin DLL SHA-256:
-  `2f8506e8b6ea3acfa6440a59bbc6e6a0115d7cf26eccb53ba763d2e8beca3f0f`.
+  `e0f404ea54d82f0857aacad33f888afa916315b95cd96d909180760fc2010f62`.
 - Local FFmpeg **9.0.2**, Homebrew **9.0.2_1**, executable
   `/opt/homebrew/Cellar/ffmpeg/9.0.2_1/bin/ffmpeg`, SHA-256
   `768609fb3f463ff9272bebac61478515f19e43c5343b0c60dde2e6230c40013e`.
@@ -32,7 +35,7 @@ From the repository root:
 ```sh
 python3 scripts/prepare-lidarr.py
 dotnet restore UniqueSingles.sln
-dotnet build UniqueSingles.sln -c Release --no-restore
+dotnet build UniqueSingles.sln -c Release --no-restore --no-incremental
 dotnet test tests/UniqueSingles.Test/UniqueSingles.Test.csproj -c Release --no-build --logger 'trx;LogFileName=issue42.trx' --results-directory _temp/test-results
 python3 -m unittest discover -s tests -p 'test_prepare_lidarr.py'
 python3 scripts/qualify-disposable-host.py
@@ -49,8 +52,8 @@ Commands are real `POST /api/v1/command` requests (`UniqueSinglesScan`,
 Metadata/Connect APIs. Every host started by the runner was terminated.
 
 Full local receipts remain at
-`_temp/issue42-67d9928a9a044f56a5f02d4c644e0f9f/` and
-`_temp/test-results/issue42.trx`. The checked-in
+`_temp/issue42-e59e290c965c49f4a68f2e8e5f4c40bd/` and
+`_temp/test-results/issue42-final.trx`. The checked-in
 [host receipt](issue-42-host.json) retains host identity, exact command responses,
 artifact identities and scheduling timestamps; [host log excerpts](issue-42-host.log.txt)
 retain plugin decisions, actual import-handler outcomes and file deletion evidence.
@@ -92,7 +95,7 @@ They contain no API key. Unrelated core tasks were omitted from the copied recei
   single and one existing counterpart file. They cannot both justify removal.
 - **Scheduling/restart:** disabled Metadata creates no plugin task. Enabling creates
   interval **10080**. After command completion, last execution
-  `2026-10-28T13:46:51Z` and next execution `2026-11-04T13:46:51Z` survive a native
+  `2026-10-28T13:50:36Z` and next execution `2026-11-04T13:50:36Z` survive a native
   process restart unchanged. Disabling removes the task. Restart does not make it
   immediately overdue.
 
