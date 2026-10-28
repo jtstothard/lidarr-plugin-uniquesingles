@@ -1,0 +1,40 @@
+C:Q1a1KHJFMBzRAGdxIXHooaamnC650=
+P:ffmpeg
+V:8.1.3-r0
+A:x86_64
+S:276461
+I:639679
+T:Complete and free Internet live audio and video broadcasting solution for Linux/Unix
+U:https://ffmpeg.org/
+L:GPL-2.0-or-later AND LGPL-2.1-or-later
+o:ffmpeg
+m:Achill Gilgenast <achill@achill.org>
+t:1792848372
+c:66cae15cc19799ecaefa1ba9b131aeba0e5f7a86
+D:so:libavcodec.so.62 so:libavdevice.so.62 so:libavfilter.so.11 so:libavformat.so.62 so:libavutil.so.60 so:libc.musl-x86_64.so.1 so:libgcc_s.so.1 so:libswresample.so.6 so:libswscale.so.9 so:libz.so.1
+p:cmd:ffmpeg=8.1.3-r0 cmd:ffprobe=8.1.3-r0 cmd:qt-faststart=8.1.3-r0
+F:usr
+F:usr/bin
+R:ffmpeg
+a:0:0:755
+Z:Q1SQvsW61vIpc7y0EeyxK/8MEP4q0=
+R:ffprobe
+a:0:0:755
+Z:Q1Eg2HgRUARrbY6e+3EzdmpE2Fdds=
+R:qt-faststart
+a:0:0:755
+Z:Q1QZySlwF2AvlgRsWQoNJw1zR2KaI=
+F:usr/share
+F:usr/share/ffmpeg
+R:ffprobe.xsd
+Z:Q1hjBr1lBwsFrXVAAWpOF7o/GT4C8=
+R:libvpx-1080p.ffpreset
+Z:Q1fasRqsJT7zlEvKaF04UWEgfRXY4=
+R:libvpx-1080p50_60.ffpreset
+Z:Q1QMviWLQlBXF4MtWdXv8ctj6CPw8=
+R:libvpx-360p.ffpreset
+Z:Q1fNSRctRUeQvnDZRI4yfh2CoDiHU=
+R:libvpx-720p.ffpreset
+Z:Q1bGr7k52E7Fjl9WzcqAGyIogJw6Q=
+R:libvpx-720p50_60.ffpreset
+Z:Q1nHnMBxOln79HtHtnTBQjmw7hejE=

@@ -1,0 +1,14 @@
+--- scripts/qualify-disposable-host.py
++++ qualification/scripts/qualify-production-image.py
+@@ -29 +28,0 @@
+-prepare.verify_archive(ARCHIVE, prepare.SHA256[RID])
+@@ -32,2 +31 @@
+-with tarfile.open(ARCHIVE) as archive:
+-    archive.extractall(RUN / 'host', filter='data')
++shutil.copytree('/app/lidarr/bin', RUN / 'host/Lidarr', symlinks=True)
+@@ -35,2 +32,0 @@
+-if platform.system() == 'Darwin':
+-    subprocess.run(['codesign', '--force', '--sign', '-', str(HOST)], check=True)
+@@ -50 +46 @@
+-results = {'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(), 'pluginSha256': hashlib.sha256(PLUGIN.read_bytes()).hexdigest(), 'archiveSha256': prepare.SHA256[RID], 'rid': RID, 'run': str(RUN), 'stages': {}}
++results = {'commit': 'f7eaee6516e243639a022f506da655d71701f429', 'pluginSha256': hashlib.sha256(PLUGIN.read_bytes()).hexdigest(), 'hostImage': 'sha256:e3f35175a0c68db1ea7e438c65af33ad3b4dece87c914cbbb35751cc68c23479', 'rid': RID, 'run': str(RUN), 'stages': {}}

@@ -1,0 +1,47 @@
+{
+  "version": "3.2.0.5150",
+  "providers": {
+    "metadata": [
+      {
+        "id": 15,
+        "enable": true,
+        "fields": {
+          "durationToleranceMs": 3000,
+          "releaseTypesToCheck": "Album, EP",
+          "tier3Action": "flagOnly",
+          "scanIntervalMinutes": 1440,
+          "exactAudioAnalysis": true,
+          "exactAudioDecoderPath": "/config/exact-audio-decoder/bin/ffmpeg",
+          "exactAudioCleanup": true
+        }
+      }
+    ],
+    "notification": [
+      {
+        "id": 54,
+        "enable": null,
+        "fields": {
+          "durationToleranceMs": 3000,
+          "releaseTypesToCheck": "Album, EP",
+          "tier3Action": "flagOnly",
+          "scanIntervalMinutes": 1440,
+          "exactAudioAnalysis": true,
+          "exactAudioDecoderPath": "/config/exact-audio-decoder/bin/ffmpeg",
+          "exactAudioCleanup": true
+        }
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "name": "Unique Singles Scan",
+      "taskName": "UniqueSinglesScan",
+      "interval": 1440,
+      "lastExecution": "2026-10-28T11:57:27Z",
+      "lastStartTime": "2026-10-28T11:57:24Z",
+      "nextExecution": "2026-10-29T11:57:27Z",
+      "lastDuration": "00:00:03.5595185",
+      "id": 287
+    }
+  ]
+}

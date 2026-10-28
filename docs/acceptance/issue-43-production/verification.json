@@ -1,0 +1,39 @@
+{
+  "configurationRowsVerified": {
+    "Config": 31,
+    "Metadata": 14,
+    "Notifications": 3,
+    "Indexers": 8,
+    "DownloadClients": 5,
+    "ImportLists": 0,
+    "RemotePathMappings": 1,
+    "QualityProfiles": 1,
+    "MetadataProfiles": 2,
+    "DelayProfiles": 1,
+    "Tags": 0
+  },
+  "healthIssueCount": 2,
+  "hostVersion": "3.2.0.5150",
+  "tasks": [
+    {
+      "name": "Unique Singles Scan",
+      "taskName": "UniqueSinglesScan",
+      "interval": 1440,
+      "lastExecution": "2026-10-28T11:57:27Z",
+      "lastStartTime": "2026-10-28T11:57:24Z",
+      "nextExecution": "2026-10-29T11:57:27Z",
+      "lastDuration": "00:00:03.5595185",
+      "id": 287
+    }
+  ],
+  "plugin": [
+    {
+      "name": "Unique Singles",
+      "owner": "jtstothard",
+      "githubUrl": "https://github.com/jtstothard/lidarr-plugin-uniquesingles",
+      "installedVersion": "1.0.2.98",
+      "availableVersion": "1.0.2.48",
+      "updateAvailable": false
+    }
+  ]
+}
