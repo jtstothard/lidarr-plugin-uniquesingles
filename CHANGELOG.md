@@ -6,7 +6,9 @@ All notable changes to Unique Singles will be documented in this file.
 
 ### Added
 
-- Opt-in, uncached exact FLAC analysis reports verified whole-release duplicates through scan/import without adding cleanup authority. Requires a local FFmpeg decoder; see `docs/exact-flac-analysis.md`.
+- Exact FLAC analysis reuses bounded in-memory evidence keyed by content, verification policy and decoder executable SHA-256, revalidating both files before returning evidence.
+
+- Opt-in exact FLAC analysis reports verified whole-release duplicates through scan/import without adding cleanup authority. Requires a local FFmpeg decoder; see `docs/exact-flac-analysis.md`.
 
 - `CONTRIBUTING.md`, `SECURITY.md`, and `CODE_OF_CONDUCT.md`
 - Issue and pull request templates

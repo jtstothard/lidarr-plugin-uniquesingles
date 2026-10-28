@@ -27,7 +27,7 @@ public interface IExactAudioVerifier
     AudioEvidence Compare(string candidatePath, string sourcePath, CancellationToken cancellationToken);
 }
 
-/// <summary>Shared by one options snapshot (whole command/import), including every artist. No cached evidence.</summary>
+/// <summary>Shared by one options snapshot (whole command/import), including every artist. Cache hits also consume comparison work.</summary>
 public sealed class AudioAnalysisBudget
 {
     private int _remaining;

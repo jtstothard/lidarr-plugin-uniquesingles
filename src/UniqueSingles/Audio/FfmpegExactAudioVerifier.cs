@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Globalization;
+using System.Collections.Generic;
 
 namespace NzbDrone.Core.Plugins;
 
@@ -21,26 +22,46 @@ public sealed class FfmpegExactAudioVerifier : IExactAudioVerifier
     private const int MaxInputBytes = 64 * 1024 * 1024;
     private const long MaxOutputBytes = 256 * 1024 * 1024;
     private static readonly SemaphoreSlim DecoderSlot = new(1, 1);
+    // Access is serialized by DecoderSlot; entries contain descriptors, never input/PCM buffers.
+    private static readonly Dictionary<string, DecodedAudio> Cache = new();
+    private static readonly Queue<string> CacheOrder = new();
+    private const int MaxCacheEntries = 1024;
+    private readonly bool _useCache;
     private readonly string _executable;
     private readonly TimeSpan _timeout;
 
-    public FfmpegExactAudioVerifier(string executable = "ffmpeg", TimeSpan? timeout = null)
+    public FfmpegExactAudioVerifier(string executable = "ffmpeg", TimeSpan? timeout = null, bool useCache = true)
     {
         _executable = executable;
+        _useCache = useCache;
         _timeout = timeout ?? TimeSpan.FromSeconds(30);
     }
 
     public AudioEvidence Compare(string candidatePath, string sourcePath, CancellationToken cancellationToken)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (_timeout <= TimeSpan.Zero) return new AudioEvidence(AudioEvidenceStatus.Unavailable, "cancelled-or-time-budget");
         deadline.CancelAfter(_timeout);
         var entered = false;
         try
         {
             DecoderSlot.Wait(deadline.Token);
             entered = true;
-            var candidate = Decode(candidatePath, deadline.Token).GetAwaiter().GetResult();
-            var source = Decode(sourcePath, deadline.Token).GetAwaiter().GetResult();
+            var executable = ResolveExecutable();
+            var decoderIdentity = ContentIdentity(executable, 256 * 1024 * 1024, deadline.Token);
+            var candidate = ReadVerified(candidatePath, executable, decoderIdentity, deadline.Token);
+            var source = ReadVerified(sourcePath, executable, decoderIdentity, deadline.Token);
+            // Evidence describes snapshots. Never consume a cached (or fresh) approval for stale paths.
+            if (ContentIdentity(candidatePath, MaxInputBytes, deadline.Token) != candidate.FileDigest
+                || ContentIdentity(sourcePath, MaxInputBytes, deadline.Token) != source.FileDigest
+                || ContentIdentity(executable, 256 * 1024 * 1024, deadline.Token) != decoderIdentity)
+                return new AudioEvidence(AudioEvidenceStatus.Unavailable, "identity-changed-during-analysis");
+            deadline.Token.ThrowIfCancellationRequested();
+            if (_useCache)
+            {
+                Remember(executable, decoderIdentity, candidate);
+                Remember(executable, decoderIdentity, source);
+            }
             var equal = candidate.SampleRate == source.SampleRate && candidate.Channels == source.Channels
                 && candidate.ChannelLayout == source.ChannelLayout
                 && candidate.BitDepth == source.BitDepth && candidate.Samples == source.Samples
@@ -63,7 +84,61 @@ public sealed class FfmpegExactAudioVerifier : IExactAudioVerifier
         }
     }
 
-    private async Task<DecodedAudio> Decode(string path, CancellationToken token)
+    private string ResolveExecutable()
+    {
+        if (Path.IsPathRooted(_executable) || _executable.Contains(Path.DirectorySeparatorChar))
+            return Path.GetFullPath(_executable);
+        foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
+        {
+            var path = Path.Combine(directory, _executable);
+            if (File.Exists(path)) return Path.GetFullPath(path);
+            if (OperatingSystem.IsWindows() && File.Exists(path + ".exe")) return Path.GetFullPath(path + ".exe");
+        }
+        throw new IOException("Decoder unavailable");
+    }
+
+    private static string ContentIdentity(string path, int limit, CancellationToken token)
+    {
+        using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (file.Length > limit) throw new InvalidOperationException("Identity input bound");
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var buffer = new byte[65536];
+        long total = 0;
+        int read;
+        while ((read = file.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            token.ThrowIfCancellationRequested();
+            total += read;
+            if (total > limit) throw new InvalidOperationException("Identity input bound");
+            hash.AppendData(buffer, 0, read);
+        }
+        token.ThrowIfCancellationRequested();
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
+    private DecodedAudio ReadVerified(string path, string executable, string decoderIdentity, CancellationToken token)
+    {
+        if (!string.Equals(Path.GetExtension(path), ".flac", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Unsupported format");
+        var content = ContentIdentity(path, MaxInputBytes, token);
+        var key = AudioEvidence.Policy + ":" + executable + ":" + decoderIdentity + ":" + content;
+        if (_useCache && Cache.TryGetValue(key, out var cached)) return cached;
+        var decoded = Decode(path, executable, token).GetAwaiter().GetResult();
+        if (decoded.FileDigest != content) throw new InvalidOperationException("Input changed");
+        return decoded;
+    }
+
+    private static void Remember(string executable, string decoderIdentity, DecodedAudio decoded)
+    {
+        // Publish only after the entire pair and decoder identities have been revalidated.
+        var key = AudioEvidence.Policy + ":" + executable + ":" + decoderIdentity + ":" + decoded.FileDigest;
+        if (Cache.ContainsKey(key)) return;
+        if (Cache.Count >= MaxCacheEntries) Cache.Remove(CacheOrder.Dequeue());
+        Cache.Add(key, decoded);
+        CacheOrder.Enqueue(key);
+    }
+
+    private async Task<DecodedAudio> Decode(string path, string executable, CancellationToken token)
     {
         if (!string.Equals(Path.GetExtension(path), ".flac", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Unsupported format");
@@ -82,7 +157,7 @@ public sealed class FfmpegExactAudioVerifier : IExactAudioVerifier
             throw new InvalidOperationException("Unsupported or unknown format/count");
         var expectedBytes = checked(samples * channels * (bits / 8));
         if (expectedBytes > MaxOutputBytes) throw new InvalidOperationException("Output bound");
-        var start = new ProcessStartInfo(_executable)
+        var start = new ProcessStartInfo(executable)
         {
             UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true,
             RedirectStandardError = true, CreateNoWindow = true,

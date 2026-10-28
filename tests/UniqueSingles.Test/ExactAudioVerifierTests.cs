@@ -70,5 +70,72 @@ public class ExactAudioVerifierTests
         }
     }
 
+    [Fact]
+    public void VerifiedContentIsReusedButReplacementAndDisappearanceAreNot()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var directory = Path.Combine(Path.GetTempPath(), "uniquesingles-cache-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var decoder = Path.Combine(directory, "decoder");
+        var candidate = Path.Combine(directory, "candidate.flac");
+        var source = Path.Combine(directory, "source.flac");
+        File.WriteAllText(decoder, "#!/bin/sh\necho decode >> \"$0.calls\"\nexec ffmpeg \"$@\"\n");
+        File.SetUnixFileMode(decoder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        File.Copy(Fixture("original.flac"), candidate);
+        File.Copy(Fixture("same-tags.flac"), source);
+        try
+        {
+            var verifier = new FfmpegExactAudioVerifier(decoder);
+            Assert.Equal(AudioEvidenceStatus.VerifiedExact, verifier.Compare(candidate, source, default).Status);
+            var calls = File.ReadAllLines(decoder + ".calls").Length;
+            Assert.Equal(AudioEvidenceStatus.VerifiedExact, verifier.Compare(candidate, source, default).Status);
+            Assert.Equal(calls, File.ReadAllLines(decoder + ".calls").Length);
+            var modified = File.GetLastWriteTimeUtc(source);
+            File.Copy(Fixture("late-sample.flac"), source, true);
+            File.SetLastWriteTimeUtc(source, modified);
+            Assert.Equal(AudioEvidenceStatus.Different, verifier.Compare(candidate, source, default).Status);
+            File.Copy(Fixture("same-tags.flac"), source, true);
+            File.WriteAllText(decoder, "#!/bin/sh\nexit 1\n");
+            Assert.Equal(AudioEvidenceStatus.Unavailable, verifier.Compare(candidate, source, default).Status);
+            File.Delete(source);
+            Assert.Equal(AudioEvidenceStatus.Unavailable, verifier.Compare(candidate, source, default).Status);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void MutationDuringDecodeCannotApproveSnapshots(bool useCache)
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var directory = Path.Combine(Path.GetTempPath(), "uniquesingles-mutation-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var decoder = Path.Combine(directory, "decoder");
+        var candidate = Path.Combine(directory, "candidate.flac");
+        System.IO.File.Copy(Fixture("original.flac"), candidate);
+        System.IO.File.Copy(Fixture("late-sample.flac"), Path.Combine(directory, "replacement.flac"));
+        System.IO.File.WriteAllText(decoder, "#!/bin/sh\ncp \"${0%/*}/replacement.flac\" \"${0%/*}/candidate.flac\"\nexec ffmpeg \"$@\"\n");
+        System.IO.File.SetUnixFileMode(decoder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        try
+        {
+            Assert.Equal(AudioEvidenceStatus.Unavailable, new FfmpegExactAudioVerifier(decoder, useCache: useCache)
+                .Compare(candidate, Fixture("same-tags.flac"), default).Status);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Theory]
+    [InlineData("same-tags.flac")]
+    [InlineData("late-sample.flac")]
+    [InlineData("forged-md5.flac")]
+    public void CachedAndUncachedEvidenceAgree(string source)
+    {
+        var uncached = new FfmpegExactAudioVerifier(useCache: false).Compare(Fixture("original.flac"), Fixture(source), default);
+        var verifier = new FfmpegExactAudioVerifier();
+        Assert.Equal(uncached, verifier.Compare(Fixture("original.flac"), Fixture(source), default));
+        Assert.Equal(uncached, verifier.Compare(Fixture("original.flac"), Fixture(source), default));
+    }
+
     private static string Fixture(string name) => Path.Combine(AppContext.BaseDirectory, "AudioFixtures", name);
 }
