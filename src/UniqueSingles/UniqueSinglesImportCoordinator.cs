@@ -93,6 +93,7 @@ public class UniqueSinglesImportCoordinator : IUniqueSinglesImportCoordinator
 
     private void LogResult(string route, Artist artist, Album album, CleanupResult result)
     {
+        _logger.Info("UniqueSingles import exact-audio summary: reportOnlyExactDuplicates={0}", result.ExactAudioReports);
         _logger.Info(
             "UniqueSingles import result: route={0} artistId={1} artist='{2}' albumId={3} album='{4}' albumType='{5}' candidatesChecked={6} cleaned={7} skipped={8} reviewNeeded={9} unmonitorFailures={10} deleteFailures={11}",
             route,

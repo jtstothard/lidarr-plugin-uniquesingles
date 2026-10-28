@@ -8,8 +8,11 @@ namespace NzbDrone.Core.Plugins;
 public readonly struct CleanupResult
 {
     /// <summary>
-    /// Number of candidate singles checked for redundancy.
+    /// Number of fully verified exact-audio duplicate releases reported without cleanup.
     /// </summary>
+    public int ExactAudioReports { get; }
+
+    /// <summary>Number of candidate singles checked for redundancy.</summary>
     public int CandidatesChecked { get; }
 
     /// <summary>
@@ -23,7 +26,8 @@ public readonly struct CleanupResult
     public int Skipped { get; }
 
     /// <summary>
-    /// Number of singles that have Tier 3 matches only and require manual review.
+    /// Number of unresolved singles requiring manual review, counted once per release.
+    /// Releases protected by an unmatched/exclusive track are excluded.
     /// </summary>
     public int ReviewNeeded { get; }
 
@@ -43,8 +47,10 @@ public readonly struct CleanupResult
         int skipped,
         int reviewNeeded,
         int unmonitorFailures,
-        int deleteFailures)
+        int deleteFailures,
+        int exactAudioReports = 0)
     {
+        ExactAudioReports = Math.Max(0, exactAudioReports);
         CandidatesChecked = Math.Max(0, candidatesChecked);
         Cleaned = Math.Max(0, cleaned);
         Skipped = Math.Max(0, skipped);
@@ -69,6 +75,7 @@ public readonly struct CleanupResult
             left.Skipped + right.Skipped,
             left.ReviewNeeded + right.ReviewNeeded,
             left.UnmonitorFailures + right.UnmonitorFailures,
-            left.DeleteFailures + right.DeleteFailures);
+            left.DeleteFailures + right.DeleteFailures,
+            left.ExactAudioReports + right.ExactAudioReports);
     }
 }

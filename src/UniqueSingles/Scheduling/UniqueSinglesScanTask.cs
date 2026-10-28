@@ -126,12 +126,14 @@ namespace NzbDrone.Core.Plugins
             // Read its persisted definition rather than dereferencing MetadataBase.Settings.
             try
             {
-                var settings = Definition?.Settings as UniqueSinglesSettings
-                    ?? _metadataFactory.Value.All()
+                // MetadataBase supplies default settings even for an unbound executor.
+                // Persisted configuration must precede that default definition.
+                var settings = _metadataFactory.Value.All()
                         .Where(d => d.Implementation == nameof(UniqueSinglesScanTask))
                         .Select(d => d.Settings)
                         .OfType<UniqueSinglesSettings>()
-                        .FirstOrDefault();
+                        .FirstOrDefault()
+                    ?? Definition?.Settings as UniqueSinglesSettings;
                 if (settings != null)
                 {
                     _logger.Info("UniqueSingles scan: using metadata provider settings (no notification found)");
@@ -248,13 +250,15 @@ namespace NzbDrone.Core.Plugins
                 aggregatedResult.UnmonitorFailures,
                 aggregatedResult.DeleteFailures);
 
+            _logger.Info("UniqueSingles scan exact-audio summary: reportOnlyExactDuplicates={0}", aggregatedResult.ExactAudioReports);
             command.ResultMessage = string.Format(
                 "{0} artists scanned, {1} singles cleaned, {2} skipped, {3} flagged for review{4}",
                 artistsScanned,
                 aggregatedResult.Cleaned,
                 aggregatedResult.Skipped,
                 aggregatedResult.ReviewNeeded,
-                artistsFailed > 0 ? $", {artistsFailed} failed" : "");
+                artistsFailed > 0 ? $", {artistsFailed} failed" : "")
+                + (aggregatedResult.ExactAudioReports > 0 ? $", {aggregatedResult.ExactAudioReports} exact duplicates (report only)" : "");
         }
 
         /// <summary>
@@ -290,6 +294,7 @@ namespace NzbDrone.Core.Plugins
 
             var result = _cleanupService.ScanArtistWithOptions(artist, options);
 
+            _logger.Info("UniqueSingles per-artist exact-audio summary: reportOnlyExactDuplicates={0}", result.ExactAudioReports);
             var failedSuffix = result.UnmonitorFailures > 0 || result.DeleteFailures > 0
                 ? string.Format(", {0} unmonitor failures, {1} delete failures", result.UnmonitorFailures, result.DeleteFailures)
                 : "";
@@ -299,7 +304,8 @@ namespace NzbDrone.Core.Plugins
                 result.Cleaned,
                 result.Skipped,
                 result.ReviewNeeded,
-                failedSuffix);
+                failedSuffix)
+                + (result.ExactAudioReports > 0 ? $", {result.ExactAudioReports} exact duplicates (report only)" : "");
 
             _logger.Info(
                 "UniqueSingles per-artist scan complete: artistId={0} artist='{1}' candidatesChecked={2} cleaned={3} skipped={4} reviewNeeded={5} unmonitorFailures={6} deleteFailures={7}",

@@ -19,4 +19,14 @@
 
   <Import Project="../../LidarrReferences.targets" />
 
+  <Target Name="PackageRelease" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <PropertyGroup>
+      <ReleasePackageDir>$(IntermediateOutputPath)package/</ReleasePackageDir>
+    </PropertyGroup>
+    <RemoveDir Directories="$(ReleasePackageDir)" />
+    <MakeDir Directories="$(ReleasePackageDir)" />
+    <Copy SourceFiles="$(TargetPath);$(TargetDir)$(TargetName).pdb" DestinationFolder="$(ReleasePackageDir)" />
+    <ZipDirectory SourceDirectory="$(ReleasePackageDir)" DestinationFile="$(TargetDir)$(TargetName).net8.0.zip" Overwrite="true" />
+  </Target>
+
 </Project>

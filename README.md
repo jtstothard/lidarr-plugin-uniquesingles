@@ -38,9 +38,14 @@ After installation, add a Unique Singles connection:
 | **Duration tolerance (ms)** | 3000 | Maximum duration difference for title + duration matching. Tracks within ±3 seconds are considered the same recording. |
 | **Release types to compare** | `Album, EP` | Comma-separated release types used as comparison sources. The plugin checks whether single tracks appear on these release types. |
 | **Title-only match action** | Flag for review | What to do when a single track matches an album track by title alone (no duration match). See matching tiers below. |
+| **Exact FLAC analysis (report only)** | Off | Verify unresolved downloaded FLAC tracks locally; report complete duplicates without adding cleanup authority. |
+| **Local FFmpeg executable** | `ffmpeg` | Operator-provided decoder inside the Lidarr runtime; no decoder is bundled. |
+| **Exact FLAC cleanup** | Off | Separately opt into whole-release cleanup after full verification and source/content revalidation. Also enables analysis. |
 | **Scan interval (minutes)** | 1440 (24 hours) | How often to run an automatic full-library scan. Minimum 60 minutes. Only read from the **UniqueSingles Scan** entry under **Settings → Metadata**; the value on the Connect entry is ignored. |
 
 The same settings form appears in two places. The Connect entry controls import-triggered cleanup, and when it exists the scheduled scan uses its matching settings too. The Metadata entry controls the scan interval and supplies matching settings when no Connect entry is available; if neither supplies matching settings, the scan uses defaults.
+
+See [exact FLAC operations](docs/exact-flac-analysis.md) for supported formats, decoder setup, evidence, limits and [disposable host acceptance](docs/acceptance/issue-42.md). Report-only analysis is not a dry run of existing metadata cleanup.
 
 ## Matching Tiers
 
@@ -85,3 +90,28 @@ If you find this plugin useful, consider buying me a coffee:
 ## License
 
 [MIT](LICENSE)
+
+### Optional exact FLAC reports
+
+Enable **Exact FLAC analysis (report only)** in the matching settings to verify unresolved downloaded singles locally. It defaults off and requires an operator-provided FFmpeg executable in the Lidarr host/container. Complete verified releases are reported without additional cleanup. Existing metadata cleanup still runs. See [decoder, limits and deployment notes](docs/exact-flac-analysis.md).
+
+### Keep and review outcomes
+
+Scans and imports report `keep-exclusive` when any evaluated downloaded track has
+no eligible match. This protects the whole release, even if another track has a
+title-only match. Track diagnostics remain available, but that release does not
+increase the review-needed count. “Exclusive” means unmatched against the current
+eligible comparison sources, not proof that the recording exists nowhere else.
+
+With **Tier 3 action** set to **Flag only**, releases whose remaining uncertainty
+is title-only matching report `review-needed` (`outcome=unresolved-review`). Each
+release counts once, even with several title-only tracks. Logs include candidate
+release/track identity, matched source identity, and the reason for keeping or
+reviewing the release. Existing cleanup settings, matching tolerance, source
+eligibility, and no-file Tier-1 unmonitoring continue to apply.
+
+Enable **Exact FLAC cleanup** separately to permit cleanup after complete exact
+coverage and immediate source/content revalidation. It defaults off and also enables
+analysis. Analysis alone remains report-only. Missing, changed or unverifiable files
+protect the release; every track needs a retained eligible counterpart. See the
+[cleanup contract](docs/exact-flac-analysis.md#explicit-exact-cleanup-41).

@@ -238,20 +238,21 @@ public class UniqueSinglesScanTaskTests
     {
         var cleanup = new StubCleanupService();
         var notifications = new StubNotificationFactory(hasConnect
-            ? new List<NotificationDefinition> { new() { Settings = new UniqueSinglesSettings { DurationToleranceMs = 7000 } } }
+            ? new List<NotificationDefinition> { new() { Settings = new UniqueSinglesSettings { DurationToleranceMs = 7000, ExactAudioAnalysis = true, ExactAudioDecoderPath = "connect-decoder" } } }
             : new List<NotificationDefinition>());
         var definitions = new List<MetadataDefinition>
         {
             new() { Implementation = "OtherProvider", Settings = new UniqueSinglesSettings { DurationToleranceMs = 9000 } },
-            new() { Implementation = nameof(UniqueSinglesScanTask), Settings = new UniqueSinglesSettings { DurationToleranceMs = 5000 } }
+            new() { Implementation = nameof(UniqueSinglesScanTask), Settings = new UniqueSinglesSettings { DurationToleranceMs = 5000, ExactAudioAnalysis = true, ExactAudioDecoderPath = "metadata-decoder" } }
         };
         var task = CreateTask(cleanup, new StubArtistService(new List<Artist> { MonitoredArtist(1, "Artist") }),
             notificationFactory: notifications, metadataDefinitions: definitions);
-        task.Definition = null!;
-
+        // Lidarr gives an unbound handler a default definition with default settings.
         task.Execute(new UniqueSinglesScanCommand());
 
         Assert.Equal(hasConnect ? 7000 : 5000, cleanup.LastOptions!.DurationToleranceMs);
+        Assert.True(cleanup.LastOptions.ExactAudioAnalysis);
+        Assert.Equal(hasConnect ? "connect-decoder" : "metadata-decoder", cleanup.LastOptions.ExactAudioDecoderPath);
     }
 
     [Fact]

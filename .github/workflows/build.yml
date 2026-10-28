@@ -33,6 +33,14 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - name: Install audio test decoder
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
+          command -v ffmpeg
+          ffmpeg -version
+          dpkg-query --show ffmpeg
+
       - name: Prepare pinned Lidarr binaries
         run: |
           python3 -m unittest discover -s tests -p 'test_prepare_lidarr.py'
@@ -52,8 +60,7 @@ jobs:
       - name: Zip Plugin
         if: github.ref == 'refs/heads/main'
         run: |
-          cd _temp/bin/Release/UniqueSingles
-          zip /tmp/${{ env.PLUGIN_NAME }}.net8.0.zip Lidarr.Plugin.UniqueSingles.dll Lidarr.Plugin.UniqueSingles.pdb
+          cp _temp/bin/Release/UniqueSingles/${{ env.PLUGIN_NAME }}.net8.0.zip /tmp/
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v3
