@@ -347,10 +347,17 @@ public class SingleCleanupService : ISingleCleanupService
                 .Analyze(single, singleTracks, comparisonTracks, options);
             if (report.Complete)
             {
-                if (!options.ExactAudioCleanup)
+                if (options.ExactAudioCleanup)
+                {
+                    cleanupReport = report;
+                    check = new SingleRedundancyCheck(true, check.TrackResults, "Complete verified exact-audio coverage; explicit cleanup opt-in.");
+                }
+                else if (options.Tier3Action != Tier3Action.AutoClean || check.TrackResults.Any(r => r.Tier == MatchTier.NoMatch))
+                {
                     return new CleanupResult(1, 0, 1, 0, 0, 0, exactAudioReports: 1);
-                cleanupReport = report;
-                check = new SingleRedundancyCheck(true, check.TrackResults, "Complete verified exact-audio coverage; explicit cleanup opt-in.");
+                }
+                // Report-only evidence grants no authority. Preserve the existing metadata
+                // AutoClean decision below when its own match requirements are satisfied.
             }
             else
             {

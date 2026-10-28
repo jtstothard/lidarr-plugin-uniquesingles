@@ -10,8 +10,8 @@ namespace NzbDrone.Core.Plugins;
 public class SingleCleanupOptions
 {
     /// <summary>
-    /// Gets the duration tolerance in milliseconds for Tier 2 matching.
-    /// Clamped to minimum 1000 ms for safety.
+    /// Gets whether verified whole-release exact-audio coverage may authorize cleanup.
+    /// Defaults to false; report-only analysis grants no additional cleanup authority.
     /// </summary>
     public bool ExactAudioCleanup { get; }
     public bool ExactAudioAnalysis { get; }
@@ -19,6 +19,10 @@ public class SingleCleanupOptions
     public System.Threading.CancellationToken AudioCancellation { get; }
     public AudioAnalysisBudget AudioBudget { get; }
 
+    /// <summary>
+    /// Gets the duration tolerance in milliseconds for Tier 2 matching.
+    /// Clamped to minimum 1000 ms for safety.
+    /// </summary>
     public int DurationToleranceMs { get; }
 
     /// <summary>

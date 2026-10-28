@@ -23,8 +23,8 @@ public sealed class FfmpegExactAudioVerifier : IExactAudioVerifier
     private const long MaxOutputBytes = 256 * 1024 * 1024;
     private static readonly SemaphoreSlim DecoderSlot = new(1, 1);
     // Access is serialized by DecoderSlot; entries contain descriptors, never input/PCM buffers.
-    private static readonly Dictionary<string, DecodedAudio> Cache = new();
-    private static readonly Queue<string> CacheOrder = new();
+    private static readonly Dictionary<CacheKey, DecodedAudio> Cache = new();
+    private static readonly Queue<CacheKey> CacheOrder = new();
     private const int MaxCacheEntries = 1024;
     private readonly bool _useCache;
     private readonly string _executable;
@@ -116,12 +116,17 @@ public sealed class FfmpegExactAudioVerifier : IExactAudioVerifier
         return Convert.ToHexString(hash.GetHashAndReset());
     }
 
+    private sealed record CacheKey(string Policy, string Executable, string DecoderIdentity, string ContentIdentity);
+
+    private static CacheKey CreateCacheKey(string executable, string decoderIdentity, string contentIdentity)
+        => new(AudioEvidence.Policy, executable, decoderIdentity, contentIdentity);
+
     private DecodedAudio ReadVerified(string path, string executable, string decoderIdentity, CancellationToken token)
     {
         if (!string.Equals(Path.GetExtension(path), ".flac", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Unsupported format");
         var content = ContentIdentity(path, MaxInputBytes, token);
-        var key = AudioEvidence.Policy + ":" + executable + ":" + decoderIdentity + ":" + content;
+        var key = CreateCacheKey(executable, decoderIdentity, content);
         if (_useCache && Cache.TryGetValue(key, out var cached)) return cached;
         var decoded = Decode(path, executable, token).GetAwaiter().GetResult();
         if (decoded.FileDigest != content) throw new InvalidOperationException("Input changed");
@@ -131,7 +136,7 @@ public sealed class FfmpegExactAudioVerifier : IExactAudioVerifier
     private static void Remember(string executable, string decoderIdentity, DecodedAudio decoded)
     {
         // Publish only after the entire pair and decoder identities have been revalidated.
-        var key = AudioEvidence.Policy + ":" + executable + ":" + decoderIdentity + ":" + decoded.FileDigest;
+        var key = CreateCacheKey(executable, decoderIdentity, decoded.FileDigest);
         if (Cache.ContainsKey(key)) return;
         if (Cache.Count >= MaxCacheEntries) Cache.Remove(CacheOrder.Dequeue());
         Cache.Add(key, decoded);

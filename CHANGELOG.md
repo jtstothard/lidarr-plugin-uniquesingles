@@ -22,6 +22,8 @@ All notable changes to Unique Singles will be documented in this file.
 
 ### Fixed
 
+- Report-only exact-audio analysis preserves existing Tier-3 AutoClean authority on scan and import (#37).
+
 - Unbound handlers now prefer persisted Metadata settings over their host-created default settings. Incomplete exact-audio analysis includes undownloaded exclusive tracks in keep/review outcomes.
 - Restored plugin identity/package smoke compilation and Release DLL/PDB ZIP generation; CI publishes the tested archive.
 

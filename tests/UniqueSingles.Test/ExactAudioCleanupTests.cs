@@ -11,6 +11,36 @@ public partial class SingleCleanupServiceTests
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(2)]
+    public void ExactAudio_ReportOnlyPreservesMetadataAutoCleanOnScanAndImport(int route)
+    {
+        var h = AudioHarness("same-tags.flac");
+        using var log = h.Log;
+        var options = new UniqueSinglesSettings
+        {
+            ExactAudioAnalysis = true,
+            Tier3Action = Tier3Action.AutoClean,
+        }.ToCleanupOptions();
+
+        var result = AudioRun(h, route, options);
+
+        Assert.Contains(log.InfoMessages, m => m.Contains("report-only-exact-duplicate"));
+        Assert.Equal(1, result.CandidatesChecked);
+        Assert.Equal(1, result.Cleaned);
+        Assert.Equal(0, result.Skipped);
+        Assert.Equal(0, result.ReviewNeeded);
+        Assert.Equal(0, result.ExactAudioReports);
+        Assert.Equal(0, result.UnmonitorFailures);
+        Assert.Equal(0, result.DeleteFailures);
+        Assert.False(h.Single.Monitored);
+        Assert.True(h.Source.Monitored);
+        Assert.Single(h.Albums.SetMonitoredCalls);
+        Assert.Equal(21, Assert.Single(h.Deletes.DeletedFiles).TrackFile.Id);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
     public void ExactAudio_ScanAndImport_ReportCompleteDuplicateWithoutCleanup(int route)
     {
         var album = Album(100, "Retained", "Album");
