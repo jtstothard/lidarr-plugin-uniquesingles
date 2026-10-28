@@ -8,7 +8,7 @@ using Xunit;
 
 namespace UniqueSingles.Test;
 
-public class SingleCleanupServiceTests
+public partial class SingleCleanupServiceTests
 {
     [Theory]
     [InlineData("Album")]

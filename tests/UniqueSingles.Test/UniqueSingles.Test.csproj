@@ -21,6 +21,8 @@
 
   <ItemGroup>
     <Compile Include="SingleCleanupServiceTests.cs" />
+    <Compile Include="ExactAudioCleanupTests.cs" />
+    <Compile Include="ExactAudioVerifierTests.cs" />
     <Compile Include="Matching/TrackMatcherTests.cs" />
     <Compile Include="SingleCleanupOptionsTests.cs" />
     <Compile Include="UniqueSinglesImportCoordinatorTests.cs" />
@@ -34,6 +36,7 @@
     <ProjectReference Include="..\..\src\UniqueSingles\UniqueSingles.csproj" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
+  <ItemGroup><None Include="AudioFixtures/*.flac" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
   <Import Project="../../LidarrReferences.targets" />
   <!-- Exercise the host container registration and lifecycle dispatch using pinned binaries. -->
   <ItemGroup>

@@ -340,6 +340,16 @@ public class SingleCleanupService : ISingleCleanupService
         }
 
         var check = TrackMatcher.CheckSingle(downloadedSingleTracks, albumTracks, options.DurationToleranceMs);
+        if (!check.IsRedundant && options.ExactAudioAnalysis)
+        {
+            var report = new ExactAudioReleaseReporter(_mediaFileService, _logger, new FfmpegExactAudioVerifier(options.ExactAudioDecoderPath))
+                .Analyze(single, singleTracks, comparisonTracks, options);
+            if (report.Complete)
+            {
+                return new CleanupResult(1, 0, 1, 0, 0, 0, exactAudioReports: 1);
+            }
+        }
+
         LogMatchDecision(artist, single, comparisonAlbumContext, check, options.Tier3Action);
 
         if (!check.IsRedundant)

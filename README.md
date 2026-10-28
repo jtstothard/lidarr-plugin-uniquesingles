@@ -85,3 +85,7 @@ If you find this plugin useful, consider buying me a coffee:
 ## License
 
 [MIT](LICENSE)
+
+### Optional exact FLAC reports
+
+Enable **Exact FLAC analysis (report only)** in the matching settings to verify unresolved downloaded singles locally. It defaults off and requires an operator-provided FFmpeg executable in the Lidarr host/container. Complete verified releases are reported without additional cleanup. Existing metadata cleanup still runs. See [decoder, limits and deployment notes](docs/exact-flac-analysis.md).

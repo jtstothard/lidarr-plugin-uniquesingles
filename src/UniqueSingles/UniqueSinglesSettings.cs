@@ -51,6 +51,12 @@ public class UniqueSinglesSettings : IProviderConfig
     [FieldDefinition(3, Label = "Scan interval (minutes)", Type = FieldType.Number, HelpText = "How often to run automatic scan. Only read from the UniqueSingles Scan entry under Settings > Metadata; ignored on the Connect entry. Minimum 60 minutes. Defaults to 1440 (24 hours).")]
     public int ScanIntervalMinutes { get; set; }
 
+    [FieldDefinition(4, Label = "Exact FLAC analysis (report only)", Type = FieldType.Checkbox, HelpText = "Opt-in local complete audio verification. Reports only; never grants additional cleanup authority. Requires FFmpeg.")]
+    public bool ExactAudioAnalysis { get; set; }
+
+    [FieldDefinition(5, Label = "Local FFmpeg executable", Type = FieldType.Textbox, HelpText = "Executable path inside the Lidarr host/container. No decoder is bundled. Defaults to ffmpeg on PATH.")]
+    public string ExactAudioDecoderPath { get; set; } = "ffmpeg";
+
     /// <summary>
     /// Converts settings to a validated SingleCleanupOptions snapshot.
     /// The ReleaseTypesToCheck field persists which release types are used for comparison tracks.
@@ -59,7 +65,7 @@ public class UniqueSinglesSettings : IProviderConfig
     public SingleCleanupOptions ToCleanupOptions()
     {
         var releaseTypes = ParseReleaseTypes(ReleaseTypesToCheck);
-        return new SingleCleanupOptions(DurationToleranceMs, releaseTypes, Tier3Action);
+        return new SingleCleanupOptions(DurationToleranceMs, releaseTypes, Tier3Action, ExactAudioAnalysis, ExactAudioDecoderPath);
     }
 
     private static HashSet<string> ParseReleaseTypes(string? releaseTypesString)

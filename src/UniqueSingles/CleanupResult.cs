@@ -10,6 +10,8 @@ public readonly struct CleanupResult
     /// <summary>
     /// Number of candidate singles checked for redundancy.
     /// </summary>
+    public int ExactAudioReports { get; }
+
     public int CandidatesChecked { get; }
 
     /// <summary>
@@ -43,8 +45,10 @@ public readonly struct CleanupResult
         int skipped,
         int reviewNeeded,
         int unmonitorFailures,
-        int deleteFailures)
+        int deleteFailures,
+        int exactAudioReports = 0)
     {
+        ExactAudioReports = Math.Max(0, exactAudioReports);
         CandidatesChecked = Math.Max(0, candidatesChecked);
         Cleaned = Math.Max(0, cleaned);
         Skipped = Math.Max(0, skipped);
@@ -69,6 +73,7 @@ public readonly struct CleanupResult
             left.Skipped + right.Skipped,
             left.ReviewNeeded + right.ReviewNeeded,
             left.UnmonitorFailures + right.UnmonitorFailures,
-            left.DeleteFailures + right.DeleteFailures);
+            left.DeleteFailures + right.DeleteFailures,
+            left.ExactAudioReports + right.ExactAudioReports);
     }
 }

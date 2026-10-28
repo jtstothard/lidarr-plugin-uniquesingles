@@ -6,6 +6,8 @@ All notable changes to Unique Singles will be documented in this file.
 
 ### Added
 
+- Opt-in, uncached exact FLAC analysis reports verified whole-release duplicates through scan/import without adding cleanup authority. Requires a local FFmpeg decoder; see `docs/exact-flac-analysis.md`.
+
 - `CONTRIBUTING.md`, `SECURITY.md`, and `CODE_OF_CONDUCT.md`
 - Issue and pull request templates
 - Dependabot config for NuGet and GitHub Actions dependencies
