@@ -1,4 +1,41 @@
-# Exact FLAC analysis (#39)
+# Exact FLAC analysis and operations
+
+The #39–41 implementation notes below record their original verification boundaries.
+[Issue #42 acceptance](acceptance/issue-42.md) supersedes their outstanding macOS
+disposable-host gate; Linux, Windows and production deployment remain separate.
+
+## Operating the feature
+
+1. Supply a pinned local FFmpeg executable in the Lidarr runtime. The qualified
+   build is FFmpeg 9.0.2, Homebrew 9.0.2_1 on macOS arm64. Use its absolute path
+   in **Local FFmpeg executable**; verify permissions under the Lidarr account.
+   No executable, shared library or license bundle is included in the plugin ZIP.
+2. Enable **Exact FLAC analysis (report only)** in Connect, or Metadata if no
+   Connect definition exists. Both audio toggles default off. Leave **Exact FLAC
+   cleanup** off while reviewing evidence. Existing metadata cleanup still runs.
+3. Manually run **UniqueSingles Scan** through Tasks/command dispatch, or import
+   synthetic files first. Automatic scheduling requires enabling the Metadata
+   provider; the minimum interval is 60 minutes and default is 1440. Disabling
+   that provider removes its task. A completed schedule retains its execution
+   time across restart rather than becoming overdue.
+4. Read whole-release outcomes: `keep-exclusive` means retain because content is
+   unmatched; `unresolved-review` means investigation remains;
+   `report-only-exact-duplicate` means every catalog track has verified coverage.
+   Track diagnostics remain available even when an exclusive B-side suppresses
+   the release review count. `Unavailable` is never deletion proof.
+5. **Exact FLAC cleanup** is a separate explicit opt-in and enables analysis itself.
+   It uses the same import/scan path and requires every track plus immediate
+   source eligibility and content revalidation. An abort or decoder failure
+   preserves remaining files; after a deletion-stage failure a release can remain
+   unmonitored, so inspect both monitoring and file outcomes.
+
+To reproduce the disposable qualification, build Release, prepare the pinned host
+archive, then run `python3 scripts/qualify-disposable-host.py` (Python 3.12+). It
+creates a new random `_temp/issue42-*` directory, fresh database and synthetic
+FLAC library, binds only loopback on an available port, and terminates its host
+in `finally`. It never accepts an existing data/library directory. On macOS it
+ad-hoc signs only its extracted disposable apphost. Retain `results.json` and
+`host-*.log` as local receipts. No production configuration is an input.
 
 ## Operator contract
 

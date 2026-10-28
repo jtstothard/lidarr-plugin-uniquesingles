@@ -252,6 +252,7 @@ public partial class SingleCleanupServiceTests
 
     [Theory]
     [InlineData("exclusive")]
+    [InlineData("exclusive-undownloaded")]
     [InlineData("missing-track")]
     [InlineData("second-version")]
     [InlineData("unmonitored")]
@@ -266,6 +267,7 @@ public partial class SingleCleanupServiceTests
             using var log = h.Log;
             var options = new UniqueSinglesSettings { ExactAudioCleanup = true }.ToCleanupOptions();
             if (protection == "exclusive") h.Tracks.WithTracks(200, h.Candidate, Track("Exclusive", 9000, "exclusive", 22));
+            if (protection == "exclusive-undownloaded") h.Tracks.WithTracks(200, h.Candidate, Track("Exclusive", 9000, "exclusive", 0));
             if (protection == "missing-track") h.Tracks.WithTracks(200, h.Candidate, Track("Song", 9000, "missing", 0));
             if (protection == "second-version")
             {
@@ -283,6 +285,11 @@ public partial class SingleCleanupServiceTests
             }
             var result = AudioRun(h, route, options);
             Assert.Equal(0, result.ExactAudioReports);
+            if (protection.StartsWith("exclusive"))
+            {
+                Assert.Equal(0, result.ReviewNeeded);
+                Assert.Contains(log.InfoMessages, m => m.Contains("keep-exclusive"));
+            }
             Assert.Empty(h.Albums.SetMonitoredCalls);
             Assert.Empty(h.Deletes.DeletedFiles);
         }

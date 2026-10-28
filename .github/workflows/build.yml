@@ -52,8 +52,7 @@ jobs:
       - name: Zip Plugin
         if: github.ref == 'refs/heads/main'
         run: |
-          cd _temp/bin/Release/UniqueSingles
-          zip /tmp/${{ env.PLUGIN_NAME }}.net8.0.zip Lidarr.Plugin.UniqueSingles.dll Lidarr.Plugin.UniqueSingles.pdb
+          cp _temp/bin/Release/UniqueSingles/${{ env.PLUGIN_NAME }}.net8.0.zip /tmp/
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v3

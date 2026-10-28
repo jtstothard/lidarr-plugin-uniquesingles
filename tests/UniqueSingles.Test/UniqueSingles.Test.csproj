@@ -30,6 +30,7 @@
     <Compile Include="ScheduledTaskServiceTests.cs" />
     <Compile Include="UniqueSinglesScanTaskTests.cs" />
     <Compile Include="AssemblySmokeTests.cs" />
+    <Compile Include="PluginIdentitySmokeTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

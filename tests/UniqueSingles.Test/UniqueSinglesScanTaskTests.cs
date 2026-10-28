@@ -247,8 +247,7 @@ public class UniqueSinglesScanTaskTests
         };
         var task = CreateTask(cleanup, new StubArtistService(new List<Artist> { MonitoredArtist(1, "Artist") }),
             notificationFactory: notifications, metadataDefinitions: definitions);
-        task.Definition = null!;
-
+        // Lidarr gives an unbound handler a default definition with default settings.
         task.Execute(new UniqueSinglesScanCommand());
 
         Assert.Equal(hasConnect ? 7000 : 5000, cleanup.LastOptions!.DurationToleranceMs);

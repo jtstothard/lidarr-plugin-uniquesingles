@@ -352,6 +352,13 @@ public class SingleCleanupService : ISingleCleanupService
                 cleanupReport = report;
                 check = new SingleRedundancyCheck(true, check.TrackResults, "Complete verified exact-audio coverage; explicit cleanup opt-in.");
             }
+            else
+            {
+                // Audio coverage includes every catalog track, including undownloaded
+                // exclusive B-sides. Give that whole-release keep decision precedence
+                // over review of the downloaded subset. This grants no cleanup authority.
+                check = TrackMatcher.CheckSingle(singleTracks, albumTracks, options.DurationToleranceMs);
+            }
         }
 
         LogMatchDecision(artist, single, comparisonAlbumContext, check, options.Tier3Action, comparisonTracks);

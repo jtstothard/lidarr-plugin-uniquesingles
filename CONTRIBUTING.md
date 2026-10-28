@@ -64,3 +64,12 @@ The project uses StyleCop analyzers (see `stylecop.json`). Match the existing fo
 Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.yml) when filing an issue. Include your Lidarr version, plugin version, and relevant logs — matching/deletion bugs are much easier to diagnose with a log excerpt.
 
 For security-sensitive issues (e.g. unsafe deletion behavior), see [SECURITY.md](SECURITY.md) instead of opening a public issue.
+
+## Disposable exact-audio acceptance
+
+The audio tests require an operator-provided FFmpeg (qualified: 9.0.2); they do
+not skip when it is missing. Release builds generate the DLL/PDB-only ZIP checked
+by `PluginIdentitySmokeTests`; CI publishes that same package. After the full
+Release/Python gates, run `python3 scripts/qualify-disposable-host.py` with Python
+3.12+ for the fresh-database, synthetic-library native command/import qualification.
+See [operations](docs/exact-flac-analysis.md) and [acceptance evidence](docs/acceptance/issue-42.md).

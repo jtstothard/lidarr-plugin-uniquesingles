@@ -38,9 +38,14 @@ After installation, add a Unique Singles connection:
 | **Duration tolerance (ms)** | 3000 | Maximum duration difference for title + duration matching. Tracks within ±3 seconds are considered the same recording. |
 | **Release types to compare** | `Album, EP` | Comma-separated release types used as comparison sources. The plugin checks whether single tracks appear on these release types. |
 | **Title-only match action** | Flag for review | What to do when a single track matches an album track by title alone (no duration match). See matching tiers below. |
+| **Exact FLAC analysis (report only)** | Off | Verify unresolved downloaded FLAC tracks locally; report complete duplicates without adding cleanup authority. |
+| **Local FFmpeg executable** | `ffmpeg` | Operator-provided decoder inside the Lidarr runtime; no decoder is bundled. |
+| **Exact FLAC cleanup** | Off | Separately opt into whole-release cleanup after full verification and source/content revalidation. Also enables analysis. |
 | **Scan interval (minutes)** | 1440 (24 hours) | How often to run an automatic full-library scan. Minimum 60 minutes. Only read from the **UniqueSingles Scan** entry under **Settings → Metadata**; the value on the Connect entry is ignored. |
 
 The same settings form appears in two places. The Connect entry controls import-triggered cleanup, and when it exists the scheduled scan uses its matching settings too. The Metadata entry controls the scan interval and supplies matching settings when no Connect entry is available; if neither supplies matching settings, the scan uses defaults.
+
+See [exact FLAC operations](docs/exact-flac-analysis.md) for supported formats, decoder setup, evidence, limits and [disposable host acceptance](docs/acceptance/issue-42.md). Report-only analysis is not a dry run of existing metadata cleanup.
 
 ## Matching Tiers
 

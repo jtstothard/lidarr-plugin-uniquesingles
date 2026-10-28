@@ -126,12 +126,14 @@ namespace NzbDrone.Core.Plugins
             // Read its persisted definition rather than dereferencing MetadataBase.Settings.
             try
             {
-                var settings = Definition?.Settings as UniqueSinglesSettings
-                    ?? _metadataFactory.Value.All()
+                // MetadataBase supplies default settings even for an unbound executor.
+                // Persisted configuration must precede that default definition.
+                var settings = _metadataFactory.Value.All()
                         .Where(d => d.Implementation == nameof(UniqueSinglesScanTask))
                         .Select(d => d.Settings)
                         .OfType<UniqueSinglesSettings>()
-                        .FirstOrDefault();
+                        .FirstOrDefault()
+                    ?? Definition?.Settings as UniqueSinglesSettings;
                 if (settings != null)
                 {
                     _logger.Info("UniqueSingles scan: using metadata provider settings (no notification found)");

@@ -6,6 +6,8 @@ All notable changes to Unique Singles will be documented in this file.
 
 ### Added
 
+- Reproducible disposable Lidarr command/import qualification with synthetic FLAC files and operations evidence (#42).
+
 - Separate default-off exact FLAC cleanup opt-in with complete-track coverage, immediate content/source revalidation, and scan/import adversarial regressions (#41).
 
 
@@ -19,6 +21,9 @@ All notable changes to Unique Singles will be documented in this file.
 - CodeQL security scanning workflow
 
 ### Fixed
+
+- Unbound handlers now prefer persisted Metadata settings over their host-created default settings. Incomplete exact-audio analysis includes undownloaded exclusive tracks in keep/review outcomes.
+- Restored plugin identity/package smoke compilation and Release DLL/PDB ZIP generation; CI publishes the tested archive.
 
 - Scan/import outcomes now distinguish exclusive-content keeps from unresolved reviews. Exclusive tracks suppress release-level review flags; multiple title-only tracks count as one review, with track evidence retained.
 
