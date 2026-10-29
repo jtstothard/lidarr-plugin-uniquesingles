@@ -1,0 +1,2 @@
+3d88b2dfaee7afb83996fdb74f82aaa1e9d1710d57f92c1d1f76953a5ee9a276  /srv/docker-state/deployment-receipts/uniquesingles-20261028/rollback-config.tar
+0a12bbcbe950bf31e07a8588e5bd98f2a5028801bada770574d2862e382f1b6b  /srv/docker-state/deployment-receipts/uniquesingles-20261028/rollback-image.tar
