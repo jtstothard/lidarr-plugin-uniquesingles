@@ -21,7 +21,12 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      # A Windows test failure must not cancel the Linux leg that publishes releases.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -33,7 +38,8 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Install audio test decoder
+      - name: Install audio test decoder (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends ffmpeg
@@ -41,32 +47,53 @@ jobs:
           ffmpeg -version
           dpkg-query --show ffmpeg
 
-      - name: Prepare pinned Lidarr binaries
+      - name: Install audio test decoder (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install ffmpeg --yes --no-progress
+          Get-Command ffmpeg
+          ffmpeg -version
+
+      - name: Prepare pinned Lidarr binaries (Linux)
+        if: runner.os == 'Linux'
         run: |
           python3 -m unittest discover -s tests -p 'test_prepare_lidarr.py'
           python3 scripts/prepare-lidarr.py
 
+      - name: Prepare pinned Lidarr binaries (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          python -m unittest discover -s tests -p 'test_prepare_lidarr.py'
+          python scripts/prepare-lidarr.py
+
       - name: Build
+        shell: bash
         run: |
           dotnet restore UniqueSingles.sln
-          dotnet build UniqueSingles.sln -c Release --no-restore /p:PluginVersion=${PLUGIN_VERSION}
+          dotnet build UniqueSingles.sln -c Release --no-restore -p:PluginVersion=${PLUGIN_VERSION}
 
       - name: Test
+        shell: bash
         env:
           EXPECTED_PLUGIN_VERSION: ${{ env.PLUGIN_VERSION }}
         run: |
           dotnet test tests/UniqueSingles.Test/UniqueSingles.Test.csproj -c Release --no-build --verbosity normal
 
       - name: Zip Plugin
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
         run: |
           cp _temp/bin/Release/UniqueSingles/${{ env.PLUGIN_NAME }}.net8.0.zip /tmp/
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v3
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
         with:
           tag_name: ${{ env.PLUGIN_VERSION }}
           name: ${{ env.PLUGIN_VERSION }}
-          draft: true
+          # Publish a real release on main so Lidarr's update check can offer and
+          # install it (the draft: true regression behind #25). PR builds never
+          # reach this step. run_number is monotonic, so the newest main build
+          # is always the one GitHub marks as Latest.
+          draft: false
+          make_latest: true
           files: /tmp/${{ env.PLUGIN_NAME }}.net8.0.zip

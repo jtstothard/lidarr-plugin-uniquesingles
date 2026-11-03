@@ -6,6 +6,7 @@ import io
 import tarfile
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 
@@ -67,6 +68,32 @@ class ArchiveTests(unittest.TestCase):
         self.write_archive(omit="Lidarr.Core.dll")
         with self.assertRaisesRegex(ValueError, "Required Lidarr assemblies missing"):
             prepare.extract_assemblies(self.archive, self.destination)
+
+
+class WindowsArchiveTests(unittest.TestCase):
+    """The Windows pin ships as a zip with the same extraction boundary."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.archive = self.root / "lidarr.zip"
+        self.destination = self.root / "references"
+        self.destination.mkdir()
+
+    def write_zip(self, omit=None):
+        with zipfile.ZipFile(self.archive, "w") as bundle:
+            for name in sorted(prepare.REQUIRED - {omit}):
+                bundle.writestr(f"Lidarr/{name}", b"dll")
+            bundle.writestr("Lidarr/", b"")
+            bundle.writestr("Lidarr/Localization/", b"")
+
+    def test_verified_zip_extracts_only_top_level_assemblies(self):
+        self.write_zip()
+        expected = hashlib.sha256(self.archive.read_bytes()).hexdigest()
+        prepare.verify_archive(self.archive, expected)
+        self.assertEqual(len(prepare.REQUIRED), prepare.extract_assemblies(self.archive, self.destination))
+        self.assertEqual(prepare.REQUIRED, {p.name for p in self.destination.iterdir()})
 
 
 if __name__ == "__main__":

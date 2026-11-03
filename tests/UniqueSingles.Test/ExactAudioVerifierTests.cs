@@ -140,7 +140,6 @@ public class ExactAudioVerifierTests
     [Theory]
     [InlineData("forged-md5.flac", "streaminfo-digest-disagreement")]
     [InlineData("lying-rate.flac", "frame-disagrees-with-streaminfo")]
-    [InlineData("truncated.flac", "incomplete-decode")]
     public void DecodeFailuresSurfaceStableGateTokens(string sourceFixture, string expectedToken)
     {
         // The reason records WHICH integrity bound failed, from this adapter's own invariant
@@ -149,6 +148,25 @@ public class ExactAudioVerifierTests
         Assert.Equal(AudioEvidenceStatus.Unavailable, evidence.Status);
         Assert.StartsWith("decode-unavailable-or-invalid:", evidence.Reason, StringComparison.Ordinal);
         Assert.Equal("decode-unavailable-or-invalid:" + expectedToken, evidence.Reason);
+    }
+
+    [Fact]
+    public void TruncatedDecodeSurfacesADecoderSideGateToken()
+    {
+        // A truncated stream fails closed on every FFmpeg build, but WHICH decoder-side
+        // gate fires is build-dependent: some builds report the incomplete stream while
+        // others parse the dangling frame header and report the STREAMINFO disagreement
+        // (observed: Ubuntu FFmpeg 9.0.2 → incomplete-decode, Chocolatey Windows build →
+        // frame-disagrees-with-streaminfo). Both are this adapter's invariant gates, so
+        // the pinned contract is that truncation is caught by a decoder-side gate and
+        // surfaced as a stable token — never a generic error, never a pass.
+        var evidence = new FfmpegExactAudioVerifier().Compare(Fixture("original.flac"), Fixture("truncated.flac"), default);
+        Assert.Equal(AudioEvidenceStatus.Unavailable, evidence.Status);
+        Assert.StartsWith("decode-unavailable-or-invalid:", evidence.Reason, StringComparison.Ordinal);
+        Assert.True(
+            evidence.Reason == "decode-unavailable-or-invalid:incomplete-decode"
+            || evidence.Reason == "decode-unavailable-or-invalid:frame-disagrees-with-streaminfo",
+            "Truncated decode must surface a decoder-side gate token, got: " + evidence.Reason);
     }
 
     [Fact]
