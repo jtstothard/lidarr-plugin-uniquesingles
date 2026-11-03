@@ -308,6 +308,38 @@ public class ScheduledTaskServiceTests
         Assert.Empty(repo.AllTasks);
     }
 
+    [Fact]
+    public void Handle_ProviderUpdated_Reenabled_RegistersPendingTaskAgain()
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 120, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider);
+        var repo = new StubScheduledTaskRepository();
+        var cache = new CacheManager();
+        using var logger = new TestLogger();
+        var taskManager = new TaskManager(repo, null!, cache, logger.Logger);
+        var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
+        var definition = new MetadataDefinition { Id = 1, Enable = true };
+
+        service.Handle(new ProviderAddedEvent<IMetadata>(definition));
+        Assert.Single(taskManager.GetPending());
+
+        definition.Enable = false;
+        factory.EnabledProviders = new List<IMetadata>();
+        service.Handle(new ProviderUpdatedEvent<IMetadata>(definition));
+        Assert.Empty(taskManager.GetPending());
+
+        definition.Enable = true;
+        factory.EnabledProviders = new List<IMetadata> { provider };
+        service.Handle(new ProviderUpdatedEvent<IMetadata>(definition));
+
+        Assert.Single(repo.AllTasks);
+        Assert.Single(taskManager.GetPending());
+        service.InitializeTasks();
+        Assert.Single(repo.AllTasks);
+        Assert.Single(taskManager.GetPending());
+    }
+
     [Theory]
     [InlineData("initialize")]
     [InlineData("add")]
