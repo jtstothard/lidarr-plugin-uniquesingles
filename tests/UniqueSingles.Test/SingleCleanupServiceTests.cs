@@ -1548,6 +1548,29 @@ public partial class SingleCleanupServiceTests
         Assert.Single(deleteMediaFiles.DeletedFiles);
     }
 
+    [Fact]
+    public void ScanArtistWithOptions_NoFiles_CanUseConfiguredSingleAsTier1Source()
+    {
+        var artist = Artist();
+        var candidate = Album(200, "Not Downloaded", "Single");
+        var downloaded = Album(300, "Downloaded Single", "Single");
+        var albumService = new RecordingAlbumService(candidate, downloaded);
+        var trackService = new RecordingTrackService()
+            .WithTracks(candidate.Id, Track("Song", 180000, "shared-mbid", fileId: 0))
+            .WithTracks(downloaded.Id, Track("Song", 180000, "shared-mbid", fileId: 31));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, new RecordingMediaFileService(), deleteMediaFiles);
+        var options = new SingleCleanupOptions(3000,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Single" }, Tier3Action.FlagOnly);
+
+        var result = service.ScanArtistWithOptions(artist, options);
+
+        Assert.Equal(1, result.Cleaned);
+        Assert.Contains((candidate.Id, false), albumService.SetMonitoredCalls);
+        Assert.True(downloaded.Monitored);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+    }
+
     // ============================================================
     // Secondary album types
     // ============================================================
