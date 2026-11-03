@@ -7,7 +7,7 @@ Thanks for considering a contribution to Unique Singles.
 Builds reference the official Lidarr 3.1.3.4968 binaries. Lidarr source submodules
 are retained for reference, but are not required for building or testing.
 Build hosts need Python 3.11+ and the .NET 8 SDK (CI uses 8.0.405). The preparation
-script supports Linux and macOS on x64 and arm64.
+script supports Linux, macOS, and Windows on x64, and Linux/macOS on arm64.
 
 ```bash
 git clone https://github.com/jtstothard/lidarr-plugin-uniquesingles.git
@@ -74,7 +74,7 @@ Release/Python gates, run `python3 scripts/qualify-disposable-host.py` with Pyth
 3.12+ for the fresh-database, synthetic-library native command/import qualification.
 See [operations](docs/exact-flac-analysis.md) and [acceptance evidence](docs/acceptance/issue-42.md).
 
-CI explicitly installs the Ubuntu FFmpeg package before running the audio tests
-and records its package/build version in the job log. This is a test dependency;
-the plugin archive does not bundle a decoder. Do not rely on hosted runners having
-FFmpeg preinstalled.
+CI explicitly installs a FFmpeg package (Ubuntu's on Linux, Chocolatey's on
+Windows) before running the audio tests and records its package/build version in
+the job log. This is a test dependency; the plugin archive does not bundle a
+decoder. Do not rely on hosted runners having FFmpeg preinstalled.
