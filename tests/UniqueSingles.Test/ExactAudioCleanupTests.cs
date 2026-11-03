@@ -371,6 +371,147 @@ public partial class SingleCleanupServiceTests
     private static string AudioFixture(string name) => System.IO.Path.Combine(AppContext.BaseDirectory, "AudioFixtures", name);
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ExactCleanup_CandidateMutatedInsideDeleteCallIsDetectedAndStopsRemainingDeletions(int route)
+    {
+        if (OperatingSystem.IsWindows()) return; // POSIX delete-guard proof; Windows share enforcement blocks the simulated in-place writer itself.
+        var (h, directory, first, second, sourceMain, sourceSecond) = GuardedDeleteHarness();
+        using var log = h.Log;
+        try
+        {
+            // External in-place mutation lands between the final per-file revalidation and the
+            // actual unlink — inside the destructive call, after every pre-check has passed.
+            h.Deletes.BeforeDelete = file =>
+            {
+                if (file.Id == 21) MutateInPlace(first);
+            };
+
+            var result = AudioRun(h, route, new UniqueSinglesSettings { ExactAudioCleanup = true }.ToCleanupOptions());
+
+            Assert.True(result.DeleteFailures == 1, string.Join("\n", log.WarnMessages));
+            Assert.Equal(1, result.Cleaned); // unmonitored before the failed deletion
+            Assert.False(h.Single.Monitored);
+            Assert.True(h.Source.Monitored);
+            Assert.Single(h.Deletes.DeletedFiles);
+            Assert.Equal(21, h.Deletes.DeletedFiles[0].TrackFile.Id);
+            Assert.True(System.IO.File.Exists(second), "remaining candidate files must be preserved");
+            Assert.True(System.IO.File.Exists(sourceMain) && System.IO.File.Exists(sourceSecond));
+            Assert.Contains(log.WarnMessages, m => m.Contains("mutation-detected-post-delete"));
+        }
+        finally { System.IO.Directory.Delete(directory, true); }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ExactCleanup_SourceMutatedInsideDeleteCallStopsRemainingDeletions(int route)
+    {
+        if (OperatingSystem.IsWindows()) return; // POSIX delete-guard proof; Windows share enforcement blocks the simulated in-place writer itself.
+        var (h, directory, first, second, sourceMain, sourceSecond) = GuardedDeleteHarness();
+        using var log = h.Log;
+        try
+        {
+            h.Deletes.BeforeDelete = file =>
+            {
+                if (file.Id == 21) MutateInPlace(sourceMain);
+            };
+
+            var result = AudioRun(h, route, new UniqueSinglesSettings { ExactAudioCleanup = true }.ToCleanupOptions());
+
+            // The first deletion completed before the mutation, but the next per-file
+            // revalidation re-hashes every source and must abort the remaining deletion.
+            Assert.True(result.DeleteFailures == 1, string.Join("\n", log.WarnMessages));
+            Assert.Equal(1, result.Cleaned);
+            Assert.False(h.Single.Monitored);
+            Assert.True(h.Source.Monitored);
+            Assert.Single(h.Deletes.DeletedFiles);
+            Assert.True(System.IO.File.Exists(second), "remaining candidate files must be preserved");
+            Assert.True(System.IO.File.Exists(sourceSecond));
+            Assert.Contains(log.WarnMessages, m => m.Contains("source-content-changed"));
+        }
+        finally { System.IO.Directory.Delete(directory, true); }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ExactCleanup_CandidateRemovedInsideDeleteCallFailsClosedBeforeNextDeletion(int route)
+    {
+        var (h, directory, first, second, _, _) = GuardedDeleteHarness();
+        using var log = h.Log;
+        try
+        {
+            // A sibling candidate file disappears inside the destructive window; the next
+            // delete-time identity anchor cannot be opened, so cleanup must fail closed.
+            h.Deletes.BeforeDelete = file =>
+            {
+                if (file.Id == 21) System.IO.File.Delete(second);
+            };
+
+            var result = AudioRun(h, route, new UniqueSinglesSettings { ExactAudioCleanup = true }.ToCleanupOptions());
+
+            Assert.True(result.DeleteFailures == 1, string.Join("\n", log.WarnMessages));
+            Assert.Equal(1, result.Cleaned);
+            Assert.False(h.Single.Monitored);
+            Assert.Single(h.Deletes.DeletedFiles);
+            Assert.Equal(21, h.Deletes.DeletedFiles[0].TrackFile.Id);
+            Assert.DoesNotContain(h.Deletes.DeletedFiles, d => d.TrackFile.Id == 22);
+            Assert.Contains(log.WarnMessages, m => m.Contains("delete-guard-open-failed"));
+        }
+        finally { System.IO.Directory.Delete(directory, true); }
+    }
+
+    /// <summary>
+    /// Two-file exact-verified release backed by real temporary FLAC files, so delete-time guard
+    /// semantics (open handle across the destructive call) are exercised against the real
+    /// filesystem, matching the late-sample/mutation fixtures style of the other audio tests.
+    /// </summary>
+    private static (AudioTestHarness Harness, string Directory, string First, string Second, string SourceMain, string SourceSecond) GuardedDeleteHarness()
+    {
+        var directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "uniquesingles-delete-guard-" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(directory);
+        var first = System.IO.Path.Combine(directory, "candidate-a.flac");
+        var second = System.IO.Path.Combine(directory, "candidate-b.flac");
+        var sourceMain = System.IO.Path.Combine(directory, "source-main.flac");
+        var sourceSecond = System.IO.Path.Combine(directory, "source-second.flac");
+        System.IO.File.Copy(AudioFixture("original.flac"), first);
+        System.IO.File.Copy(AudioFixture("stereo.flac"), second);
+        System.IO.File.Copy(AudioFixture("same-tags.flac"), sourceMain);
+        System.IO.File.Copy(AudioFixture("stereo.flac"), sourceSecond);
+
+        var h = AudioHarness("same-tags.flac");
+        var secondCandidate = Track("Other", 100000, "other-candidate", 22);
+        secondCandidate.Id = 3;
+        var secondSource = Track("Other", 900000, "other-source", 12);
+        secondSource.Id = 4;
+        h.Tracks.WithTracks(200, h.Candidate, secondCandidate).WithTracks(100, h.SourceTrack, secondSource);
+        h.Files.WithFiles(200, File(21, 200, first), File(22, 200, second))
+            .WithFiles(100, File(11, 100, sourceMain), File(12, 100, sourceSecond));
+        h.Deletes.DeleteSyntheticFiles = true;
+        return (h, directory, first, second, sourceMain, sourceSecond);
+    }
+
+    private static void MutateInPlace(string path)
+    {
+        // External same-inode write through a separate process: models an out-of-Lidarr writer
+        // racing the destructive call. In-process .NET writers are blocked outright by the
+        // delete guard's FileShare.Read handle, so the simulated external mutation must come
+        // from another process, matching the documented threat model. cp truncates the
+        // destination in place (same inode) rather than unlinking and replacing the path.
+        var replacement = path + ".mutated";
+        var bytes = System.IO.File.ReadAllBytes(path);
+        bytes[^1] ^= 0x5a;
+        System.IO.File.WriteAllBytes(replacement, bytes);
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("/bin/cp", $"\"{replacement}\" \"{path}\""));
+        process!.WaitForExit();
+        Assert.True(process.ExitCode == 0, $"external in-place mutation failed with exit code {process.ExitCode}");
+    }
+
+    [Theory]
     [InlineData("late-sample.flac", "Different")]
     [InlineData("different-count.flac", "Different")]
     [InlineData("different-rate.flac", "Different")]

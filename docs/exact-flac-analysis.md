@@ -4,8 +4,10 @@ The #39–41 implementation notes below record their original verification bound
 [Issue #42 acceptance](acceptance/issue-42.md) supersedes their outstanding macOS
 disposable-host gate. The subsequent [Linux VM102 qualification](acceptance/issue-37-linux.md)
 passed all 14 native stages with Ubuntu FFmpeg 6.1.1 and a separately identified
-DLL. Historical Linux-unverified statements below predate that bounded run.
-Windows and production deployment remain unqualified.
+DLL. The [issue #49 qualification](acceptance/issue-49.md) adds native album-import
+and fault-injection stages to the same disposable runner on macOS arm64. Historical
+Linux-unverified statements below predate that bounded run. Windows remains
+unqualified; see the Windows gap note below for exactly what qualification requires.
 
 ## Operating the feature
 
@@ -43,7 +45,7 @@ Windows and production deployment remain unqualified.
 
 To reproduce the disposable qualification, build Release, prepare the pinned host
 archive, then run `python3 scripts/qualify-disposable-host.py` (Python 3.12+). It
-creates a new random `_temp/issue42-*` directory, fresh database and synthetic
+creates a new random `_temp/issue49-*` directory, fresh database and synthetic
 FLAC library, binds only loopback on an available port, and terminates its host
 in `finally`. It never accepts an existing data/library directory. On macOS it
 ad-hoc signs only its extracted disposable apphost. Retain `results.json` and
@@ -89,13 +91,30 @@ the Lidarr runtime (defaults to `ffmpeg` on that runtime's PATH), not a shell co
 A decoder on the developer Mac says nothing about the production container.
 
 FFmpeg is available for Linux, macOS and Windows, but executable packaging,
-architecture, libc/runtime and permissions are deployment concerns. This delivery
-has only executed on macOS arm64. Linux/Windows and the production container remain
-unverified. A managed decoder would avoid an executable deployment step but adds a
-new shipped dependency and needs independent corruption/format qualification;
-libFLAC interop adds native ABI/platform packaging. FFmpeg was selected because a
-usable local installation exists and its native FLAC decoder and diagnostic seam
-can be exercised without changing Lidarr core. No cloud service is involved.
+architecture, libc/runtime and permissions are deployment concerns. The exact-audio
+path is qualified natively on macOS arm64 ([#42](acceptance/issue-42.md),
+[#49](acceptance/issue-49.md)) and Linux x86_64
+([#37](acceptance/issue-37-linux.md)); the production container qualification is
+recorded in [#43](acceptance/issue-43-production.md). A managed decoder would avoid
+an executable deployment step but adds a new shipped dependency and needs
+independent corruption/format qualification; libFLAC interop adds native
+ABI/platform packaging. FFmpeg was selected because a usable local installation
+exists and its native FLAC decoder and diagnostic seam can be exercised without
+changing Lidarr core. No cloud service is involved.
+
+**Windows qualification gap (open).** Windows has never executed this path and
+remains unqualified — no claim is made. Qualifying it requires, at minimum: a
+Windows host running the documented disposable suite (`scripts/qualify-disposable-host.py`)
+end to end against a pinned Windows FFmpeg build, with the runner extended first
+because it currently maps only `osx`/`linux` RIDs and its fault-injection decoder
+wrappers are POSIX shell scripts that need Windows equivalents; retained receipts
+naming the decoder executable SHA-256, environment and every stage outcome under
+`docs/acceptance/`; and updates to the platform statements in this document to name
+exactly the qualified platforms. The C# suite's POSIX-only delete-guard proofs and
+process-lifecycle tests skip on Windows by design (Windows blocks the simulated
+external in-place writer through mandatory share enforcement — the protection the
+guard provides there — so the detection path cannot be exercised as on POSIX); a
+Windows qualification must state that boundary rather than imply parity.
 
 FFmpeg's normal license is LGPL 2.1 or later; enabling optional GPL components or
 version3 changes the applicable license. See the upstream
@@ -201,11 +220,38 @@ cleanup. An unmonitor failure prevents deletion; a later validation/deletion fai
 leaves the release unmonitored and preserves remaining files. Logs record verification,
 revalidation action, abort reason and normal unmonitor/delete outcomes.
 
+**Delete-time guard (#49).** Each exact-audio file deletion anchors content identity
+on an open handle instead of a path read: the file is opened read-only with write
+sharing denied *before* the final per-file revalidation, the verified digest is
+re-checked through that same handle, the handle stays open across Lidarr's deletion
+call, and the pinned bytes are re-read afterwards. In-place mutation of the deleted
+file between the final check and deletion is therefore blocked or detected: .NET's
+share enforcement blocks same-process writers on every platform, Windows additionally
+blocks external in-place writers by mandatory share enforcement while the handle is
+held, and on POSIX — where sharing is advisory — the post-delete re-read through the
+pinned handle detects any external in-place change, logs
+`reason=mutation-detected-post-delete`, and aborts the remaining deletions. If the
+guard handle cannot be opened at all (the file disappeared or was replaced),
+cleanup fails closed (`reason=delete-guard-open-failed`) before any destructive call.
+A post-delete re-read that cannot be performed also fails closed
+(`reason=post-delete-verify-failed`). Non-exact cleanup paths (metadata matching,
+Tier-1 no-file unmonitor) are unchanged and take no guard.
+
+**Residual window (inherent, documented).** Deletion goes through Lidarr's
+path-based deletion service so that Lidarr's own `TrackFileDeleted` history and
+recycle-bin integration remain in force; the plugin cannot delete by handle without
+bypassing them. Consequently an external rename-over of the path — replacing the
+directory entry with different content between the guard's open and Lidarr's unlink —
+remains an OS-level TOCTOU that the guard cannot close (the guard pins and verifies
+the inode it verified, while the unlink acts on the path). Filesystem and repository
+calls are still not one atomic transaction. The #49 fault-injection tests prove the
+fail-closed outcomes for in-place candidate mutation, source mutation and sibling
+removal inside the destructive window; rename-over replacement is not claimable as
+closed and is accepted as the residual race, as with existing media deletion.
+
 This contract consumes immutable verifier evidence and works uncached; a #40 wrapper
-must supply the same content evidence and cannot bypass these checks. Filesystem and
-repository calls are not one atomic transaction: external changes after the final
-check remain a race, as with existing media deletion. No production settings were
-activated. Disposable native dispatcher acceptance under #37 remains outstanding.
+must supply the same content evidence and cannot bypass these checks. No production
+settings were activated. Disposable native dispatcher acceptance under #37 remains outstanding.
 
 ## Content evidence cache (#40)
 
