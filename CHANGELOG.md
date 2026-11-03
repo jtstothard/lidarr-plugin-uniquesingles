@@ -4,6 +4,12 @@ All notable changes to Unique Singles will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Main-branch CI builds now publish real GitHub releases instead of drafts, with `make_latest: true` so the newest `1.0.2.<run_number>` build is the release Lidarr's update check offers and installs. Draft releases were the root cause of #25 (users told an update exists but had nothing to install). Pull-request builds remain unpublished. (#25)
+
+- CI now builds and runs the full test suite on `windows-latest` as Windows evidence toward #49: the pinned Lidarr reference set gains a SHA-256-verified `windows-core-x64` archive (zip extraction with the same top-level-DLL boundary), and the audio tests use Chocolatey's FFmpeg. POSIX-only process-lifecycle proofs keep their deliberate Windows guards.
+
 ### Added
 
 - Delete-time verification guard for exact-audio file deletions (#49). Every exact-audio deletion now opens the candidate read-only with write sharing denied before the final per-file revalidation, re-checks the verified content digest through that same open handle, keeps the handle across Lidarr's deletion call, and re-reads the pinned bytes afterwards. An in-place mutation between the final check and the actual deletion is now blocked (in-process writers on all platforms; external writers on Windows by share enforcement) or detected and the remaining deletions aborted (`reason=mutation-detected-post-delete`); a file that disappeared or was replaced fails closed before any destructive call (`reason=delete-guard-open-failed`). The inherent rename-over TOCTOU that remains because deletion goes through Lidarr's path-based service is documented in `docs/exact-flac-analysis.md`. Metadata and Tier-1 cleanup paths are unchanged.

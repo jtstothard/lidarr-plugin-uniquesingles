@@ -8,6 +8,7 @@ import sys
 import tarfile
 import tempfile
 import urllib.request
+import zipfile
 from pathlib import Path, PurePosixPath
 
 
@@ -19,6 +20,7 @@ SHA256 = {
     "linux-core-arm64": "e5c89688850885bc7becd779e668bbf423ca3fe37986704b70d9e9b217ea9e44",
     "osx-core-x64": "3143137d84cf8a06b4efda544af88c360247256993d05af05bb7a725ef3e96ed",
     "osx-core-arm64": "7fbebd4e5a5b01a8489a5dc733d7bb40c6881a42ccc87d32ace72640257bb725",
+    "windows-core-x64": "4bd64517008f319d37d4d4585146a474ac2ff2d0183b1b751661f89f2b434280",
 }
 REQUIRED = {
     "Lidarr.Core.dll", "Lidarr.Common.dll", "Lidarr.Http.dll", "Lidarr.Api.V1.dll",
@@ -36,18 +38,32 @@ def verify_archive(archive, expected):
 def extract_assemblies(archive, destination):
     """Copy only regular DLL files immediately inside Lidarr/, never archive paths."""
     found = set()
-    with tarfile.open(archive, "r:gz") as bundle:
-        for member in bundle:
-            path = PurePosixPath(member.name)
-            if len(path.parts) != 2 or path.parts[0] != "Lidarr" or path.suffix != ".dll":
-                continue
-            if not member.isfile() or path.name in found:
-                raise ValueError(f"Invalid or duplicate assembly member: {member.name}")
-            if member.size > 100 * 1024 * 1024:
-                raise ValueError(f"Oversized assembly: {member.name}")
-            with bundle.extractfile(member) as source, (destination / path.name).open("wb") as target:
-                shutil.copyfileobj(source, target)
-            found.add(path.name)
+    if archive.name.endswith(".zip"):
+        with zipfile.ZipFile(archive) as bundle:
+            for member in bundle.infolist():
+                path = PurePosixPath(member.filename)
+                if len(path.parts) != 2 or path.parts[0] != "Lidarr" or path.suffix != ".dll":
+                    continue
+                if member.is_dir() or path.name in found:
+                    raise ValueError(f"Invalid or duplicate assembly member: {member.filename}")
+                if member.file_size > 100 * 1024 * 1024:
+                    raise ValueError(f"Oversized assembly: {member.filename}")
+                with bundle.open(member) as source, (destination / path.name).open("wb") as target:
+                    shutil.copyfileobj(source, target)
+                found.add(path.name)
+    else:
+        with tarfile.open(archive, "r:gz") as bundle:
+            for member in bundle:
+                path = PurePosixPath(member.name)
+                if len(path.parts) != 2 or path.parts[0] != "Lidarr" or path.suffix != ".dll":
+                    continue
+                if not member.isfile() or path.name in found:
+                    raise ValueError(f"Invalid or duplicate assembly member: {member.name}")
+                if member.size > 100 * 1024 * 1024:
+                    raise ValueError(f"Oversized assembly: {member.name}")
+                with bundle.extractfile(member) as source, (destination / path.name).open("wb") as target:
+                    shutil.copyfileobj(source, target)
+                found.add(path.name)
     missing = REQUIRED - found
     if missing:
         raise ValueError(f"Required Lidarr assemblies missing: {', '.join(sorted(missing))}")
@@ -55,16 +71,17 @@ def extract_assemblies(archive, destination):
 
 
 def main():
-    system = {"Darwin": "osx", "Linux": "linux"}.get(platform.system())
+    system = {"Darwin": "osx", "Linux": "linux", "Windows": "windows"}.get(platform.system())
     machine = {"arm64": "arm64", "aarch64": "arm64", "x86_64": "x64", "AMD64": "x64"}.get(platform.machine())
     rid = f"{system}-core-{machine}"
     if rid not in SHA256:
-        raise ValueError("Supported build hosts: Linux or macOS, x64 or arm64")
+        raise ValueError("Supported build hosts: Linux, macOS, or Windows, x64 or arm64")
 
     root = Path(__file__).resolve().parent.parent
     cache = root / "_temp" / "lidarr"
     cache.mkdir(parents=True, exist_ok=True)
-    name = f"Lidarr.develop.{VERSION}.{rid}.tar.gz"
+    suffix = ".zip" if rid.startswith("windows-") else ".tar.gz"
+    name = f"Lidarr.develop.{VERSION}.{rid}{suffix}"
     archive = cache / name
     if not archive.exists():
         url = f"https://github.com/Lidarr/Lidarr/releases/download/v{VERSION}/{name}"
@@ -100,5 +117,5 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (OSError, ValueError, tarfile.TarError) as error:
+    except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
         sys.exit(f"Lidarr preparation failed: {error}")
