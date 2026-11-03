@@ -70,7 +70,7 @@ jobs:
         shell: bash
         run: |
           dotnet restore UniqueSingles.sln
-          dotnet build UniqueSingles.sln -c Release --no-restore /p:PluginVersion=${PLUGIN_VERSION}
+          dotnet build UniqueSingles.sln -c Release --no-restore -p:PluginVersion=${PLUGIN_VERSION}
 
       - name: Test
         shell: bash
