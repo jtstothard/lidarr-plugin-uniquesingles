@@ -75,8 +75,10 @@ public sealed class FfmpegExactAudioVerifier : IExactAudioVerifier
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is System.ComponentModel.Win32Exception || ex is InvalidOperationException || ex is ArgumentException)
         {
-            // Never log executable stderr, paths or exception messages as structured evidence.
-            return new AudioEvidence(AudioEvidenceStatus.Unavailable, "decode-unavailable-or-invalid:" + ex.GetType().Name);
+            // Never log executable stderr, paths or framework exception messages as structured
+            // evidence. The adapter's own invariant gate messages map to stable reason tokens so
+            // audits can tell WHICH integrity bound failed without leaking environment detail.
+            return new AudioEvidence(AudioEvidenceStatus.Unavailable, "decode-unavailable-or-invalid:" + DecodeFailureToken(ex));
         }
         finally
         {
@@ -96,6 +98,35 @@ public sealed class FfmpegExactAudioVerifier : IExactAudioVerifier
         }
         throw new IOException("Decoder unavailable");
     }
+
+    /// <summary>
+    /// Maps this adapter's own invariant gate messages to stable evidence tokens. Framework
+    /// exceptions (which can embed paths or environment text) keep only their type name.
+    /// </summary>
+    private static string DecodeFailureToken(Exception ex) => ex switch
+    {
+        InvalidOperationException or IOException when GateToken(ex.Message) != null => GateToken(ex.Message)!,
+        _ => ex.GetType().Name,
+    };
+
+    private static string? GateToken(string? message) => message switch
+    {
+        "Unsupported format" => "unsupported-format",
+        "Invalid STREAMINFO" => "invalid-streaminfo",
+        "Unsupported or unknown format/count" => "unsupported-format-or-count",
+        "Input bound" => "input-bound",
+        "Identity input bound" => "identity-input-bound",
+        "Output bound" => "output-bound",
+        "Unexpected samples" => "unexpected-samples",
+        "Incomplete decode" => "incomplete-decode",
+        "Decoder unavailable" => "decoder-unavailable",
+        "Input changed" => "input-changed",
+        "Decoded frame format disagrees with STREAMINFO" => "frame-disagrees-with-streaminfo",
+        "Layout changed" => "layout-changed",
+        "Decoder diagnostic bound" => "decoder-diagnostic-bound",
+        "STREAMINFO digest disagrees with decoded PCM" => "streaminfo-digest-disagreement",
+        _ => null,
+    };
 
     private static string ContentIdentity(string path, int limit, CancellationToken token)
     {

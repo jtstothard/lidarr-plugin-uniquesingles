@@ -62,7 +62,7 @@ public class UniqueSinglesScanTaskTests
         task.Execute(command);
 
         // Total: 18 candidates, 5 cleaned, 8 skipped, 1 review, 1 unmonitor failure, 1 delete failure
-        Assert.Contains("2 artists scanned, 5 singles cleaned, 8 skipped, 1 flagged for review", command.ResultMessage);
+        Assert.Contains("2 artists scanned, 5 singles cleaned (unmonitored; deletion not guaranteed), 8 skipped, 1 flagged for review", command.ResultMessage);
     }
 
     [Fact]
@@ -377,6 +377,56 @@ public class UniqueSinglesScanTaskTests
         Assert.Contains("2 artists scanned", command.ResultMessage);
     }
 
+    // ── Dispatcher cancellation wiring (#44) ─────────────────────────
+
+    [Fact]
+    public void Execute_LinksAudioAnalysisCancellationIntoOptions()
+    {
+        var cleanup = new StubCleanupService();
+        var task = CreateTask(cleanup, new StubArtistService(new List<Artist> { MonitoredArtist(1, "Artist") }));
+
+        task.Execute(new UniqueSinglesScanCommand());
+
+        // Options resolved from settings (precedence preserved) gain a linked dispatcher token.
+        Assert.NotNull(cleanup.LastOptions);
+        Assert.True(cleanup.LastOptions!.AudioCancellation.CanBeCanceled);
+        Assert.False(cleanup.LastOptions.AudioCancellation.IsCancellationRequested);
+    }
+
+    [Fact]
+    public void Execute_DispatcherCancellation_StopsScanBeforeNextArtist()
+    {
+        var cleanup = new StubCleanupService();
+        using var logger = new TestLogger();
+        var cancellation = new AudioAnalysisCancellation(logger.Logger);
+        var task = CreateTask(cleanup,
+            new StubArtistService(new List<Artist> { MonitoredArtist(1, "A"), MonitoredArtist(2, "B") }),
+            logger.Logger,
+            audioCancellation: cancellation);
+
+        cancellation.Handle(new NzbDrone.Core.Lifecycle.ApplicationShutdownRequested());
+        var command = new UniqueSinglesScanCommand();
+        task.Execute(command);
+
+        Assert.Empty(cleanup.ScannedArtists);
+        Assert.Contains("stopped early", command.ResultMessage);
+        Assert.True(logger.HasMessageContaining("dispatcher cancellation requested"));
+    }
+
+    [Fact]
+    public void Execute_ResultMessageReportsKeepExclusiveAggregate()
+    {
+        var cleanupService = new StubCleanupService();
+        cleanupService.Results[1] = new CleanupResult(3, 0, 1, 1, 0, 0, keepExclusive: 2);
+        var task = CreateTask(cleanupService, new StubArtistService(new List<Artist> { MonitoredArtist(1, "Artist") }));
+
+        var command = new UniqueSinglesScanCommand();
+        task.Execute(command);
+
+        Assert.Contains("2 kept for exclusive content", command.ResultMessage);
+        Assert.Contains("0 singles cleaned (unmonitored; deletion not guaranteed)", command.ResultMessage);
+    }
+
     // ── Helper methods and stubs ──────────────────────────────────────
 
     private static UniqueSinglesScanTask CreateTask(
@@ -384,14 +434,16 @@ public class UniqueSinglesScanTaskTests
         StubArtistService artistService,
         Logger? logger = null,
         INotificationFactory? notificationFactory = null,
-        List<MetadataDefinition>? metadataDefinitions = null)
+        List<MetadataDefinition>? metadataDefinitions = null,
+        AudioAnalysisCancellation? audioCancellation = null)
     {
         var log = logger ?? new TestLogger().Logger;
         var factory = notificationFactory ?? new StubNotificationFactory();
         var metadataFactory = DispatchProxy.Create<IMetadataFactory, MetadataFactoryProxy>();
         ((MetadataFactoryProxy)(object)metadataFactory).Definitions = metadataDefinitions ?? new();
         var task = new UniqueSinglesScanTask(cleanupService, artistService,
-            new Lazy<INotificationFactory>(() => factory), new Lazy<IMetadataFactory>(() => metadataFactory), log);
+            new Lazy<INotificationFactory>(() => factory), new Lazy<IMetadataFactory>(() => metadataFactory),
+            audioCancellation ?? new AudioAnalysisCancellation(log), log);
         // Provider infrastructure sets Definition before use; replicate in tests
         task.Definition = new NzbDrone.Core.Extras.Metadata.MetadataDefinition
         {

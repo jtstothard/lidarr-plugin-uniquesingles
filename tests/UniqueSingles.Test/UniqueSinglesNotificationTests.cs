@@ -161,6 +161,41 @@ public class UniqueSinglesNotificationTests
     }
 
     [Fact]
+    public void OnReleaseImport_LinksDispatcherCancellationIntoOptions()
+    {
+        using var loggerHarness = new LoggerHarness();
+        var coordinator = new RecordingImportCoordinator();
+        var cancellation = new AudioAnalysisCancellation(loggerHarness.Logger);
+        var notification = new UniqueSinglesNotification(coordinator, cancellation, loggerHarness.Logger);
+
+        notification.OnReleaseImport(Message(
+            new Artist { Id = 10, Name = "Artist" },
+            new Album { Id = 20, Title = "Release", AlbumType = "Album" }));
+
+        Assert.Equal(1, coordinator.HandleCalls);
+        Assert.NotNull(coordinator.LastOptions);
+        Assert.True(coordinator.LastOptions!.AudioCancellation.CanBeCanceled);
+        Assert.False(coordinator.LastOptions.AudioCancellation.IsCancellationRequested);
+    }
+
+    [Fact]
+    public void OnReleaseImport_DispatcherCancellation_FlowsIntoOptions()
+    {
+        using var loggerHarness = new LoggerHarness();
+        var coordinator = new RecordingImportCoordinator();
+        var cancellation = new AudioAnalysisCancellation(loggerHarness.Logger);
+        cancellation.Handle(new NzbDrone.Core.Lifecycle.ApplicationShutdownRequested());
+        var notification = new UniqueSinglesNotification(coordinator, cancellation, loggerHarness.Logger);
+
+        notification.OnReleaseImport(Message(
+            new Artist { Id = 10, Name = "Artist" },
+            new Album { Id = 20, Title = "Release", AlbumType = "Album" }));
+
+        Assert.Equal(1, coordinator.HandleCalls);
+        Assert.True(coordinator.LastOptions!.AudioCancellation.IsCancellationRequested);
+    }
+
+    [Fact]
     public void Test_ReturnsSuccessfulValidationResult()
     {
         using var loggerHarness = new LoggerHarness();

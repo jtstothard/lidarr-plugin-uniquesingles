@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using NLog;
 using NzbDrone.Core.Extras.Metadata;
 using NzbDrone.Core.Messaging.Commands;
@@ -26,6 +27,7 @@ namespace NzbDrone.Core.Plugins
         private readonly Logger _logger;
         private readonly Lazy<INotificationFactory> _notificationFactory;
         private readonly Lazy<IMetadataFactory> _metadataFactory;
+        private readonly IAudioAnalysisCancellation _audioAnalysisCancellation;
 
         /// <summary>
         /// INotificationFactory is resolved lazily to avoid a DryIoc recursive dependency at startup.
@@ -39,12 +41,14 @@ namespace NzbDrone.Core.Plugins
             IArtistService artistService,
             Lazy<INotificationFactory> notificationFactory,
             Lazy<IMetadataFactory> metadataFactory,
+            IAudioAnalysisCancellation audioAnalysisCancellation,
             Logger logger)
         {
             _cleanupService = cleanupService ?? throw new ArgumentNullException(nameof(cleanupService));
             _artistService = artistService ?? throw new ArgumentNullException(nameof(artistService));
             _notificationFactory = notificationFactory ?? throw new ArgumentNullException(nameof(notificationFactory));
             _metadataFactory = metadataFactory ?? throw new ArgumentNullException(nameof(metadataFactory));
+            _audioAnalysisCancellation = audioAnalysisCancellation ?? throw new ArgumentNullException(nameof(audioAnalysisCancellation));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -210,8 +214,23 @@ namespace NzbDrone.Core.Plugins
 
             var options = ResolveCleanupOptions();
 
+            // Lidarr's synchronous IExecute entry point carries no per-command dispatcher token;
+            // link the dispatcher's observable lifecycle signal into the audio-analysis option so
+            // decoder work stops when the host shuts down.
+            using var dispatcherCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                options.AudioCancellation, _audioAnalysisCancellation.Token);
+            options = options.WithAudioCancellation(dispatcherCancellation.Token);
+
             foreach (var artist in monitoredArtists)
             {
+                if (dispatcherCancellation.IsCancellationRequested)
+                {
+                    _logger.Info(
+                        "UniqueSingles scan: dispatcher cancellation requested, stopping scan. artistsRemaining={0} reason=dispatcher-shutdown",
+                        monitoredArtists.Count - artistsScanned - artistsFailed);
+                    break;
+                }
+
                 try
                 {
                     var result = _cleanupService.ScanArtistWithOptions(artist, options);
@@ -219,13 +238,14 @@ namespace NzbDrone.Core.Plugins
                     artistsScanned++;
 
                     _logger.Debug(
-                        "UniqueSingles scan: artist complete. artistId={0} artist='{1}' candidatesChecked={2} cleaned={3} skipped={4} reviewNeeded={5}",
+                        "UniqueSingles scan: artist complete. artistId={0} artist='{1}' candidatesChecked={2} cleaned={3} skipped={4} reviewNeeded={5} keepExclusive={6}",
                         artist.Id,
                         artist.Name,
                         result.CandidatesChecked,
                         result.Cleaned,
                         result.Skipped,
-                        result.ReviewNeeded);
+                        result.ReviewNeeded,
+                        result.KeepExclusive);
                 }
                 catch (Exception ex)
                 {
@@ -238,8 +258,9 @@ namespace NzbDrone.Core.Plugins
                 }
             }
 
+            var stoppedEarly = dispatcherCancellation.IsCancellationRequested;
             _logger.Info(
-                "UniqueSingles scan complete: artistsScanned={0} artistsSkipped={1} artistsFailed={2} candidatesChecked={3} cleaned={4} skipped={5} reviewNeeded={6} unmonitorFailures={7} deleteFailures={8}",
+                "UniqueSingles scan complete: artistsScanned={0} artistsSkipped={1} artistsFailed={2} candidatesChecked={3} cleaned={4} skipped={5} reviewNeeded={6} keepExclusive={7} unmonitorFailures={8} deleteFailures={9} stoppedEarly={10}",
                 artistsScanned,
                 allArtists.Count - monitoredArtists.Count,
                 artistsFailed,
@@ -247,17 +268,21 @@ namespace NzbDrone.Core.Plugins
                 aggregatedResult.Cleaned,
                 aggregatedResult.Skipped,
                 aggregatedResult.ReviewNeeded,
+                aggregatedResult.KeepExclusive,
                 aggregatedResult.UnmonitorFailures,
-                aggregatedResult.DeleteFailures);
+                aggregatedResult.DeleteFailures,
+                stoppedEarly);
 
             _logger.Info("UniqueSingles scan exact-audio summary: reportOnlyExactDuplicates={0}", aggregatedResult.ExactAudioReports);
             command.ResultMessage = string.Format(
-                "{0} artists scanned, {1} singles cleaned, {2} skipped, {3} flagged for review{4}",
+                "{0} artists scanned, {1} singles cleaned (unmonitored; deletion not guaranteed), {2} skipped, {3} flagged for review{4}{5}{6}",
                 artistsScanned,
                 aggregatedResult.Cleaned,
                 aggregatedResult.Skipped,
                 aggregatedResult.ReviewNeeded,
-                artistsFailed > 0 ? $", {artistsFailed} failed" : "")
+                aggregatedResult.KeepExclusive > 0 ? $", {aggregatedResult.KeepExclusive} kept for exclusive content" : "",
+                artistsFailed > 0 ? $", {artistsFailed} failed" : "",
+                stoppedEarly ? ", scan stopped early after dispatcher cancellation" : "")
                 + (aggregatedResult.ExactAudioReports > 0 ? $", {aggregatedResult.ExactAudioReports} exact duplicates (report only)" : "");
         }
 
@@ -292,6 +317,10 @@ namespace NzbDrone.Core.Plugins
                 return;
             }
 
+            using var dispatcherCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                options.AudioCancellation, _audioAnalysisCancellation.Token);
+            options = options.WithAudioCancellation(dispatcherCancellation.Token);
+
             var result = _cleanupService.ScanArtistWithOptions(artist, options);
 
             _logger.Info("UniqueSingles per-artist exact-audio summary: reportOnlyExactDuplicates={0}", result.ExactAudioReports);
@@ -300,21 +329,23 @@ namespace NzbDrone.Core.Plugins
                 : "";
 
             command.ResultMessage = string.Format(
-                "1 artist scanned, {0} singles cleaned, {1} skipped, {2} flagged for review{3}",
+                "1 artist scanned, {0} singles cleaned (unmonitored; deletion not guaranteed), {1} skipped, {2} flagged for review{3}{4}",
                 result.Cleaned,
                 result.Skipped,
                 result.ReviewNeeded,
+                result.KeepExclusive > 0 ? $", {result.KeepExclusive} kept for exclusive content" : "",
                 failedSuffix)
                 + (result.ExactAudioReports > 0 ? $", {result.ExactAudioReports} exact duplicates (report only)" : "");
 
             _logger.Info(
-                "UniqueSingles per-artist scan complete: artistId={0} artist='{1}' candidatesChecked={2} cleaned={3} skipped={4} reviewNeeded={5} unmonitorFailures={6} deleteFailures={7}",
+                "UniqueSingles per-artist scan complete: artistId={0} artist='{1}' candidatesChecked={2} cleaned={3} skipped={4} reviewNeeded={5} keepExclusive={6} unmonitorFailures={7} deleteFailures={8}",
                 artist.Id,
                 artist.Name,
                 result.CandidatesChecked,
                 result.Cleaned,
                 result.Skipped,
                 result.ReviewNeeded,
+                result.KeepExclusive,
                 result.UnmonitorFailures,
                 result.DeleteFailures);
         }

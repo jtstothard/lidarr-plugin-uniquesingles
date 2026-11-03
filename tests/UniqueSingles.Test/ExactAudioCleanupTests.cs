@@ -250,6 +250,124 @@ public partial class SingleCleanupServiceTests
         finally { Directory.Delete(directory, true); }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ExactAudio_ReleaseLineReportsConfiguredCleanupAuthority(bool exactAudioCleanup)
+    {
+        var h = AudioHarness("same-tags.flac");
+        using var log = h.Log;
+        var options = new SingleCleanupOptions(3000, new() { "Album" }, Tier3Action.FlagOnly,
+            exactAudioAnalysis: true, exactAudioCleanup: exactAudioCleanup);
+
+        var result = AudioRun(h, 0, options);
+
+        var releaseLine = Assert.Single(log.InfoMessages, m =>
+            m.Contains("exact-audio release:") && m.Contains("candidateReleaseId=200"));
+        Assert.Contains(exactAudioCleanup ? "cleanupAuthority=exact-audio-cleanup" : "cleanupAuthority=none", releaseLine);
+        // The tier3 candidate is review-needed, so the run must be labelled review-priority.
+        Assert.Contains("reviewPriority=True", releaseLine);
+        if (!exactAudioCleanup)
+        {
+            Assert.Equal(1, result.ExactAudioReports);
+            Assert.True(h.Single.Monitored);
+        }
+    }
+
+    [Fact]
+    public void ExactAudio_NonReviewCandidateReleaseLineIsNotLabelledReviewPriority()
+    {
+        var h = AudioHarness("same-tags.flac");
+        using var log = h.Log;
+        // A downloaded exclusive B-side makes the whole release a keep, not a review candidate.
+        h.Tracks.WithTracks(200, h.Candidate, Track("Exclusive", 9000, "exclusive", 22));
+        h.Files.WithFiles(200, File(21, 200, AudioFixture("original.flac")), File(22, 200, AudioFixture("late-sample.flac")));
+
+        AudioRun(h, 0, new UniqueSinglesSettings { ExactAudioAnalysis = true }.ToCleanupOptions());
+
+        var releaseLine = Assert.Single(log.InfoMessages, m =>
+            m.Contains("exact-audio release:") && m.Contains("candidateReleaseId=200"));
+        Assert.Contains("reviewPriority=False", releaseLine);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ExactAudio_ReviewNeededCandidatesReceiveComparisonAttempts(int route)
+    {
+        var h = ReviewPriorityHarness();
+        using var log = h.Log;
+        // One comparison total, reserved for review-priority candidates: the earlier
+        // keep-exclusive candidates cannot consume it (production finding 2026-10-29).
+        var options = new SingleCleanupOptions(3000, new() { "Album" }, Tier3Action.FlagOnly,
+            exactAudioAnalysis: true, audioBudget: new AudioAnalysisBudget(1, 1));
+
+        var result = ReviewPriorityRun(h, route, options);
+
+        Assert.True(result.ExactAudioReports == 1, string.Join("\n", log.InfoMessages));
+        Assert.Equal(0, result.ReviewNeeded);
+        Assert.Equal(route == 1 ? 0 : 3, result.KeepExclusive);
+        Assert.Equal(0, result.Cleaned);
+        Assert.Contains(log.InfoMessages, m =>
+            m.Contains("candidateTrackId=" + h.ReviewTrack.Id) && m.Contains("status=VerifiedExact"));
+        Assert.DoesNotContain(log.InfoMessages, m =>
+            m.Contains("candidateTrackId=" + h.ReviewTrack.Id) && m.Contains("comparison-budget-exhausted"));
+        Assert.Contains(log.InfoMessages, m =>
+            m.Contains("exact-audio release:") && m.Contains("candidateReleaseId=204") && m.Contains("decision=report-only-exact-duplicate"));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ExactAudio_ReviewNeededCandidatesAreAnalyzedBeforeOtherCandidates(int route)
+    {
+        var h = ReviewPriorityHarness();
+        using var log = h.Log;
+        // No reserved lane at all: the earlier candidates can drain the whole budget, so the
+        // review-needed release only receives an attempt when it is analyzed first.
+        var options = new SingleCleanupOptions(3000, new() { "Album" }, Tier3Action.FlagOnly,
+            exactAudioAnalysis: true, audioBudget: new AudioAnalysisBudget(2, 0));
+
+        var result = ReviewPriorityRun(h, route, options);
+
+        Assert.Equal(1, result.ExactAudioReports);
+        Assert.Equal(0, result.ReviewNeeded);
+        var audioLines = log.InfoMessages.Where(m => m.Contains("UniqueSingles exact-audio:") && m.Contains("status=")).ToList();
+        Assert.True(audioLines.Count > 0, string.Join("\n", log.InfoMessages));
+        Assert.Contains("candidateReleaseId=204", audioLines[0]);
+        if (route != 1)
+        {
+            Assert.Contains(log.InfoMessages, m => m.Contains("reason=review-priority-first"));
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ExactAudio_KeepExclusiveOutcomesCountSeparatelyFromSkipped(int route)
+    {
+        var h = AudioHarness("same-tags.flac");
+        using var log = h.Log;
+        h.Tracks.WithTracks(200, h.Candidate, Track("Exclusive", 9000, "exclusive", 22));
+        h.Files.WithFiles(200, File(21, 200, AudioFixture("original.flac")), File(22, 200, AudioFixture("late-sample.flac")));
+        var options = new UniqueSinglesSettings { ExactAudioCleanup = true }.ToCleanupOptions();
+
+        var result = AudioRun(h, route, options);
+
+        // Incomplete audio coverage (different PCM) falls back to the whole-release metadata
+        // decision, whose keep-exclusive outcome is now its own summary aggregate.
+        Assert.Equal(1, result.KeepExclusive);
+        Assert.Equal(0, result.Skipped);
+        Assert.Equal(0, result.ReviewNeeded);
+        Assert.Equal(0, result.Cleaned);
+        Assert.Equal(1, log.InfoMessages.Count(m => m.Contains("outcome=keep-exclusive") && m.Contains("singleId=200")));
+        Assert.Empty(h.Albums.SetMonitoredCalls);
+        Assert.Empty(h.Deletes.DeletedFiles);
+    }
+
     private static string AudioFixture(string name) => System.IO.Path.Combine(AppContext.BaseDirectory, "AudioFixtures", name);
 
     [Theory]
@@ -411,6 +529,61 @@ public partial class SingleCleanupServiceTests
                 .WithFiles(200, File(21, 200, AudioFixture("original.flac"))),
             new RecordingDeleteMediaFiles(), new RecordingLogger(), source, single, candidate, sourceTrack);
     }
+
+    /// <summary>
+    /// One retained album (audio-equal counterpart), three keep-exclusive filler singles whose
+    /// title-matching track consumes a comparison against different PCM, and a review-needed
+    /// single listed LAST so only prioritization/reservation lets it get comparison attempts.
+    /// </summary>
+    private static ReviewPriorityTestHarness ReviewPriorityHarness()
+    {
+        var source = Album(100, "Retained", "Album");
+        var sourceTrack = Track("Song", 900000, "source", 11);
+        sourceTrack.Id = 1;
+        var fillers = new List<Album>();
+        for (var i = 0; i < 3; i++)
+        {
+            fillers.Add(Album(201 + i, "Filler " + i, "Single"));
+        }
+
+        var reviewSingle = Album(204, "Review Candidate", "Single");
+        var reviewTrack = Track("Song", 100000, "review-candidate", 21);
+        reviewTrack.Id = 20;
+
+        var albums = new RecordingAlbumService(new[] { source }.Concat(fillers).Append(reviewSingle).ToArray());
+        var tracks = new RecordingTrackService().WithTracks(100, sourceTrack);
+        var files = new RecordingMediaFileService()
+            .WithFiles(100, File(11, 100, AudioFixture("same-tags.flac")));
+        var trackId = 10;
+        foreach (var filler in fillers)
+        {
+            var fillerTrack = Track("Song", 100000, "filler-" + filler.Id, filler.Id * 10 + 1);
+            fillerTrack.Id = trackId++;
+            var exclusiveTrack = Track("Filler Exclusive " + filler.Id, 9000, "filler-exclusive-" + filler.Id, filler.Id * 10 + 2);
+            exclusiveTrack.Id = trackId++;
+            tracks.WithTracks(filler.Id, fillerTrack, exclusiveTrack);
+            files.WithFiles(filler.Id,
+                File(fillerTrack.TrackFileId, filler.Id, AudioFixture("late-sample.flac")),
+                File(exclusiveTrack.TrackFileId, filler.Id, AudioFixture("late-sample.flac")));
+        }
+
+        tracks.WithTracks(204, reviewTrack);
+        files.WithFiles(204, File(21, 204, AudioFixture("original.flac")));
+        return new ReviewPriorityTestHarness(albums, tracks, files, new RecordingDeleteMediaFiles(),
+            new RecordingLogger(), reviewSingle, source, reviewTrack);
+    }
+
+    private static CleanupResult ReviewPriorityRun(ReviewPriorityTestHarness h, int route, SingleCleanupOptions options)
+    {
+        var service = Service(h.Albums, h.Tracks, h.Files, h.Deletes, h.Log);
+        if (route == 0) return service.ScanArtistWithOptions(Artist(), options);
+        return new UniqueSinglesImportCoordinator(service, h.Log.Logger).HandleImport(
+            new AlbumDownloadMessage { Artist = Artist(), Album = route == 1 ? h.ReviewSingle : h.Source }, options);
+    }
+
+    private sealed record ReviewPriorityTestHarness(RecordingAlbumService Albums, RecordingTrackService Tracks,
+        RecordingMediaFileService Files, RecordingDeleteMediaFiles Deletes, RecordingLogger Log,
+        Album ReviewSingle, Album Source, Track ReviewTrack);
 
     private static CleanupResult AudioRun(AudioTestHarness h, int route, SingleCleanupOptions options)
     {

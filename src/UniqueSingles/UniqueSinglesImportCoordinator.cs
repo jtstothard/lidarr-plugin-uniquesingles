@@ -95,7 +95,7 @@ public class UniqueSinglesImportCoordinator : IUniqueSinglesImportCoordinator
     {
         _logger.Info("UniqueSingles import exact-audio summary: reportOnlyExactDuplicates={0}", result.ExactAudioReports);
         _logger.Info(
-            "UniqueSingles import result: route={0} artistId={1} artist='{2}' albumId={3} album='{4}' albumType='{5}' candidatesChecked={6} cleaned={7} skipped={8} reviewNeeded={9} unmonitorFailures={10} deleteFailures={11}",
+            "UniqueSingles import result: route={0} artistId={1} artist='{2}' albumId={3} album='{4}' albumType='{5}' candidatesChecked={6} cleaned={7} skipped={8} reviewNeeded={9} keepExclusive={10} unmonitorFailures={11} deleteFailures={12}",
             route,
             artist.Id,
             artist.Name,
@@ -106,6 +106,7 @@ public class UniqueSinglesImportCoordinator : IUniqueSinglesImportCoordinator
             result.Cleaned,
             result.Skipped,
             result.ReviewNeeded,
+            result.KeepExclusive,
             result.UnmonitorFailures,
             result.DeleteFailures);
     }

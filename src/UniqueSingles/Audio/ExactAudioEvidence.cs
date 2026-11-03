@@ -27,14 +27,39 @@ public interface IExactAudioVerifier
     AudioEvidence Compare(string candidatePath, string sourcePath, CancellationToken cancellationToken);
 }
 
-/// <summary>Shared by one options snapshot (whole command/import), including every artist. Cache hits also consume comparison work.</summary>
+/// <summary>
+/// Shared by one options snapshot (whole command/import), including every artist. Cache hits also
+/// consume comparison work. The total is split into a shared lane every candidate may use and a
+/// review lane reserved for review-priority candidates, so earlier candidates cannot starve the
+/// review queue of comparison attempts.
+/// </summary>
 public sealed class AudioAnalysisBudget
 {
+    public const int DefaultComparisons = 64;
+    public const int DefaultReviewReserve = 32;
+
+    private readonly int _reviewReserve;
     private int _remaining;
 
-    public AudioAnalysisBudget(int comparisons = 32) => _remaining = Math.Clamp(comparisons, 0, 32);
+    public AudioAnalysisBudget(int comparisons = DefaultComparisons, int reviewReserve = DefaultReviewReserve)
+    {
+        _remaining = Math.Clamp(comparisons, 0, DefaultComparisons);
+        _reviewReserve = Math.Clamp(reviewReserve, 0, _remaining);
+    }
 
-    public bool TryTake() => Interlocked.Decrement(ref _remaining) >= 0;
+    public bool TryTake(bool reviewPriority = false)
+    {
+        // Decrement first, then validate, mirroring the original atomic pattern; roll back when
+        // the take would cross into the reserved review lane (or past exhaustion).
+        var remaining = Interlocked.Decrement(ref _remaining);
+        if (remaining >= 0 && (reviewPriority || remaining >= _reviewReserve))
+        {
+            return true;
+        }
+
+        Interlocked.Increment(ref _remaining);
+        return false;
+    }
 }
 
 /// <summary>Track and file identities are evidence about a snapshot, never a reusable cleanup permit.</summary>
