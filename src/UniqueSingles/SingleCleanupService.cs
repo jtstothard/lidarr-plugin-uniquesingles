@@ -411,7 +411,7 @@ public class SingleCleanupService : ISingleCleanupService
             }
         }
 
-        if (cleanupReport != null && !RevalidateExactCleanup(artist, single, cleanupReport, options))
+        if (cleanupReport != null && !RevalidateExactCleanup(artist, single, cleanupReport, options, null, null, out _))
             return new CleanupResult(1, 0, 1, 0, 0, 0);
 
         if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext, check))
@@ -426,7 +426,9 @@ public class SingleCleanupService : ISingleCleanupService
         comparisonTracks.Remove(single.Id);
 
         if (!TryDeleteSingleFiles(artist, single, comparisonAlbumContext,
-            cleanupReport == null ? null : file => RevalidateExactCleanup(artist, single, cleanupReport, options, file)))
+            cleanupReport == null ? null : (file, stream) =>
+                RevalidateExactCleanup(artist, single, cleanupReport, options, file, stream, out var verifiedDigest)
+                    ? verifiedDigest : null))
         {
             cleaned = 1; // Unmonitored successfully
             deleteFailures = 1;
@@ -439,12 +441,19 @@ public class SingleCleanupService : ISingleCleanupService
 
     // Re-read repository identities and hash actual bytes. Snapshot evidence (including cached
     // evidence) is never authority on its own. Repeated immediately before each destructive call.
+    // At deletion time the deleting file's content is verified through the caller's open guard
+    // handle so the identity check and the destructive call anchor on the same bytes.
     private bool RevalidateExactCleanup(Artist artist, Album single, ExactAudioReleaseReport report,
-        SingleCleanupOptions options, TrackFile? deleting = null)
+        SingleCleanupOptions options, TrackFile? deleting, System.IO.FileStream? deletingStream,
+        out string? verifiedDigest)
     {
+        verifiedDigest = null;
         try
         {
             if (options.AudioCancellation.IsCancellationRequested) throw new InvalidOperationException("cancelled");
+            // Deleting files must be verified through a held delete-guard handle, never by a
+            // fresh path read that external mutation could invalidate before the delete call.
+            if (deleting != null && deletingStream == null) throw new InvalidOperationException("delete-guard-missing");
             var albums = _albumService.GetAlbumsByArtist(artist.Id);
             var sources = GetComparisonTracksByAlbum(albums, options);
             var required = _trackService.GetTracksByAlbum(single.Id);
@@ -469,10 +478,15 @@ public class SingleCleanupService : ISingleCleanupService
                 if (deleting == null || track.TrackFileId == deleting.Id)
                 {
                     var candidateFile = candidateFiles.Single(f => f.Id == track.TrackFileId);
+                    var digest = evidence.Evidence.Candidate?.FileDigest;
+                    var candidateUnchanged = deletingStream != null
+                        ? ContentMatches(deletingStream, digest)
+                        : ContentMatches(candidateFile.Path, digest);
                     if (!track.HasFile || candidateFile.Path != evidence.CandidatePath
                         || (deleting != null && deleting.Path != candidateFile.Path)
-                        || !ContentMatches(candidateFile.Path, evidence.Evidence.Candidate?.FileDigest))
+                        || !candidateUnchanged)
                         throw new InvalidOperationException("candidate-content-changed");
+                    if (deleting != null) verifiedDigest = digest;
                 }
             }
             if (deleting != null && !required.Any(t => t.TrackFileId == deleting.Id))
@@ -492,6 +506,14 @@ public class SingleCleanupService : ISingleCleanupService
         if (string.IsNullOrEmpty(digest)) return false;
         using var stream = System.IO.File.OpenRead(path);
         if (stream.Length > 64 * 1024 * 1024) return false;
+        return string.Equals(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)), digest, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ContentMatches(System.IO.Stream stream, string? digest)
+    {
+        if (string.IsNullOrEmpty(digest)) return false;
+        if (stream.Length > 64 * 1024 * 1024) return false;
+        stream.Seek(0, System.IO.SeekOrigin.Begin);
         return string.Equals(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)), digest, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -831,7 +853,19 @@ public class SingleCleanupService : ISingleCleanupService
         }
     }
 
-    private bool TryDeleteSingleFiles(Artist artist, Album single, Album? comparisonAlbumContext, Func<TrackFile, bool>? validate = null)
+    /// <summary>
+    /// Deletes a release's files. When <paramref name="validate"/> is supplied (exact-audio
+    /// cleanup only), each deletion is guarded: the file is opened with write sharing denied,
+    /// its verified content identity is rechecked through that same handle, the handle is held
+    /// across the destructive call, and the pinned bytes are re-read afterwards so any in-place
+    /// mutation between the final check and deletion is detected and aborts the remaining
+    /// deletions. On Windows the share mode blocks in-place writers outright; elsewhere the
+    /// re-read detects them. A rename-over of the path remains an inherent OS-level TOCTOU
+    /// because deletion goes through Lidarr's path-based deletion service; see
+    /// docs/exact-flac-analysis.md.
+    /// </summary>
+    private bool TryDeleteSingleFiles(Artist artist, Album single, Album? comparisonAlbumContext,
+        Func<TrackFile, System.IO.FileStream?, string?>? validate = null)
     {
         List<TrackFile> files;
         try
@@ -868,10 +902,42 @@ public class SingleCleanupService : ISingleCleanupService
         var allDeleted = true;
         foreach (var file in files)
         {
+            // The delete-guard handle anchors content identity at deletion time: open before
+            // revalidation, verify through it, and keep it open across the destructive call.
+            System.IO.FileStream? guard = null;
             try
             {
-                if (validate != null && !validate(file)) return false;
+                var verifiedDigest = default(string);
+                if (validate != null)
+                {
+                    try
+                    {
+                        guard = new System.IO.FileStream(file.Path, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read | System.IO.FileShare.Delete);
+                    }
+                    catch (Exception openEx)
+                    {
+                        _logger.Warn(
+                            openEx,
+                            "UniqueSingles exact-audio cleanup: candidateReleaseId={0} trackFileId={1} decision=keep reason=delete-guard-open-failed path-unverifiable-at-delete-time remainingDeletions=aborted",
+                            single.Id,
+                            file.Id);
+                        return false;
+                    }
+
+                    verifiedDigest = validate(file, guard);
+                    if (verifiedDigest == null)
+                    {
+                        return false;
+                    }
+                }
+
                 _deleteMediaFiles.DeleteTrackFile(artist, file);
+
+                if (guard != null && !DeletedContentStillMatches(guard, verifiedDigest, single.Id, file.Id))
+                {
+                    return false;
+                }
+
                 _logger.Info(
                     "UniqueSingles delete success: artistId={0} artist='{1}' singleId={2} single='{3}' comparisonAlbumId={4} comparisonAlbum='{5}' trackFileId={6} path='{7}'",
                     artist.Id,
@@ -898,9 +964,45 @@ public class SingleCleanupService : ISingleCleanupService
                     file.Id,
                     file.Path);
             }
+            finally
+            {
+                guard?.Dispose();
+            }
         }
 
         return allDeleted;
+    }
+
+    /// <summary>
+    /// Re-reads the pinned delete-guard handle after the destructive call and compares it with
+    /// the digest verified immediately before deletion. In-place mutation of the deleted file
+    /// between the final check and deletion is therefore detected rather than silently consumed.
+    /// Any failure (including an unreadable handle) fails closed and aborts remaining deletions.
+    /// </summary>
+    private bool DeletedContentStillMatches(System.IO.FileStream deleted, string? verifiedDigest, int releaseId, int trackFileId)
+    {
+        try
+        {
+            if (ContentMatches(deleted, verifiedDigest))
+            {
+                return true;
+            }
+
+            _logger.Warn(
+                "UniqueSingles exact-audio cleanup: candidateReleaseId={0} trackFileId={1} decision=keep reason=mutation-detected-post-delete detail=deleted-content-no-longer-matches-verified-evidence remainingDeletions=aborted",
+                releaseId,
+                trackFileId);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn(
+                ex,
+                "UniqueSingles exact-audio cleanup: candidateReleaseId={0} trackFileId={1} decision=keep reason=post-delete-verify-failed detail=deleted-content-could-not-be-rechecked remainingDeletions=aborted",
+                releaseId,
+                trackFileId);
+            return false;
+        }
     }
 
     private static SingleCleanupOptions CreateLegacyOptions()

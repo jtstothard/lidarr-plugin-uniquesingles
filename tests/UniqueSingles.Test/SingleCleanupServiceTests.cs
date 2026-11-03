@@ -1224,10 +1224,18 @@ public partial class SingleCleanupServiceTests
     {
         public bool ThrowOnDelete { get; set; }
         public bool DeleteSyntheticFiles { get; set; }
+
+        /// <summary>
+        /// Runs inside the destructive delete call, after the final revalidation check but before
+        /// the file is removed — the exact externally-mutable window the delete guard must close.
+        /// </summary>
+        public Action<TrackFile>? BeforeDelete { get; set; }
+
         public List<(Artist Artist, TrackFile TrackFile)> DeletedFiles { get; } = new();
 
         public void DeleteTrackFile(Artist artist, TrackFile trackFile)
         {
+            BeforeDelete?.Invoke(trackFile);
             DeletedFiles.Add((artist, trackFile));
             if (ThrowOnDelete)
             {

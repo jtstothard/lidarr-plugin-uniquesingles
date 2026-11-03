@@ -27,7 +27,7 @@ spec.loader.exec_module(prepare)
 RID = {'Darwin': 'osx', 'Linux': 'linux'}[platform.system()] + '-core-' + {'arm64': 'arm64', 'aarch64': 'arm64', 'x86_64': 'x64'}[platform.machine()]
 ARCHIVE = ROOT / '_temp/lidarr' / f'Lidarr.develop.{prepare.VERSION}.{RID}.tar.gz'
 prepare.verify_archive(ARCHIVE, prepare.SHA256[RID])
-RUN = ROOT / '_temp' / ('issue42-' + uuid.uuid4().hex)
+RUN = ROOT / '_temp' / ('issue49-' + uuid.uuid4().hex)
 RUN.mkdir()
 with tarfile.open(ARCHIVE) as archive:
     archive.extractall(RUN / 'host', filter='data')
@@ -271,6 +271,182 @@ try:
     scan('equivalent-singles-retain-survivor', '1 singles cleaned')
     assert sum(api(f'album/{i}')['monitored'] for i in (300, 400)) == 1
     assert sum((LIBRARY / str(i) / 'Survivor.flac').exists() for i in (300, 400)) == 1
+    # ── Issue #49: native album-import route and fault-injection stages (second artist) ──
+    # A dedicated synthetic artist isolates these stages from the issue-42 library above.
+    LIBRARY2 = RUN / 'synthetic-library/Artist2'
+    WRAPPERS = RUN / 'wrappers'
+
+    def seed_second_artist(db):
+        LIBRARY2.mkdir(parents=True)
+        insert(db, 'ArtistMetadata', Id=2, ForeignArtistId='synthetic-issue49', Name='Synthetic Issue49', Status=0, Images='[]')
+        insert(db, 'Artists', Id=2, CleanName='syntheticissue49', Path=str(LIBRARY2), Monitored=1, MetadataProfileId=1, ArtistMetadataId=2, MonitorNewItems=0, QualityProfileId=1, Tags='[]', Added='2026-11-03 00:00:00')
+        insert(db, 'Albums', Id=500, ForeignAlbumId='synthetic-album-500', Title='Retained', CleanTitle='retained', Images='[]', Monitored=1, AlbumType='Album', ArtistMetadataId=2, AnyReleaseOk=1, OldForeignAlbumIds='[]', SecondaryTypes='[]')
+        insert(db, 'AlbumReleases', Id=500, ForeignReleaseId='synthetic-release-500', AlbumId=500, Title='Retained', Status='Official', Duration=900000, Monitored=1, OldForeignReleaseIds='[]', TrackCount=1, Media='[]')
+        path = LIBRARY2 / 'Retained/Song.flac'
+        path.parent.mkdir()
+        shutil.copyfile(FIXTURES / 'same-tags.flac', path)
+        insert(db, 'TrackFiles', Id=501, AlbumId=500, Quality='{"quality":6,"revision":{"version":1,"real":0,"isRepack":false}}', Size=path.stat().st_size, DateAdded='2026-11-03 00:00:00', Modified='2026-11-03 00:00:00', Path=str(path))
+        insert(db, 'Tracks', Id=500, ForeignTrackId='synthetic-track-500', Title='Song', Explicit=0, TrackFileId=501, Duration=900000, MediumNumber=1, AbsoluteTrackNumber=1, TrackNumber='1', ForeignRecordingId='issue49-source', AlbumReleaseId=500, ArtistMetadataId=2)
+
+    def seed_candidate(db, album_id, fixture='original.flac'):
+        folder = LIBRARY2 / f'Single{album_id}'
+        path = folder / 'Song.flac'
+        folder.mkdir()
+        shutil.copyfile(FIXTURES / fixture, path)
+        insert(db, 'Albums', Id=album_id, ForeignAlbumId=f'synthetic-album-{album_id}', Title=f'Candidate {album_id}', CleanTitle=f'candidate{album_id}', Images='[]', Monitored=1, AlbumType='Single', ArtistMetadataId=2, AnyReleaseOk=1, OldForeignAlbumIds='[]', SecondaryTypes='[]')
+        insert(db, 'AlbumReleases', Id=album_id, ForeignReleaseId=f'synthetic-release-{album_id}', AlbumId=album_id, Title=f'Candidate {album_id}', Status='Official', Duration=100000, Monitored=1, OldForeignReleaseIds='[]', TrackCount=1, Media='[]')
+        # Wide id gaps: Lidarr auto-assigns TrackFiles ids from max(Id)+1 during imports,
+        # so contiguous explicit ids would collide with the rows those imports create.
+        insert(db, 'TrackFiles', Id=album_id * 1000, AlbumId=album_id, Quality='{"quality":6,"revision":{"version":1,"real":0,"isRepack":false}}', Size=path.stat().st_size, DateAdded='2026-11-03 00:00:00', Modified='2026-11-03 00:00:00', Path=str(path))
+        insert(db, 'Tracks', Id=album_id, ForeignTrackId=f'synthetic-track-{album_id}', Title='Song', Explicit=0, TrackFileId=album_id * 1000, Duration=100000, MediumNumber=1, AbsoluteTrackNumber=1, TrackNumber='1', ForeignRecordingId=f'issue49-candidate-{album_id}', AlbumReleaseId=album_id, ArtistMetadataId=2)
+
+    def drop_candidate(db, album_id):
+        # Fault-preserved candidates are removed before the next stage so each fault stage
+        # is evaluated in isolation; their files stay on disk as run evidence.
+        db.execute(f'DELETE FROM Tracks WHERE AlbumReleaseId={album_id}')
+        db.execute(f'DELETE FROM TrackFiles WHERE AlbumId={album_id}')
+        db.execute(f'DELETE FROM AlbumReleases WHERE AlbumId={album_id}')
+        db.execute(f'DELETE FROM Albums WHERE Id={album_id}')
+
+    def write_wrapper(name, body):
+        WRAPPERS.mkdir(exist_ok=True)
+        wrapper = WRAPPERS / name
+        wrapper.write_text('#!/bin/sh\n' + body)
+        wrapper.chmod(0o755)
+        return wrapper
+
+    def host_log():
+        return '\n'.join(Path(x.name).read_text() for x in logs)
+
+    def wait_for_log(fragment, timeout=20):
+        for _ in range(timeout * 10):
+            text = host_log()
+            if fragment in text:
+                return text
+            time.sleep(.1)
+        return host_log()
+
+    def scan_second_artist(label, expected):
+        return command(label, {'name': 'UniqueSinglesScan', 'artistId': 2}, expected)
+
+    stop()
+    sql(lambda db: (seed_second_artist(db), seed_candidate(db, 600)))
+    start()
+
+    # Native album-import route: a real import into the retained ALBUM dispatches the
+    # notification's artist-cleanup route (parity with the proven single-import route).
+    provider('notification', {'releaseTypesToCheck': 'Album', 'exactAudioCleanup': True, 'exactAudioDecoderPath': shutil.which('ffmpeg')})
+    incoming2 = RUN / 'incoming2/Song.flac'
+    incoming2.parent.mkdir()
+    shutil.copyfile(FIXTURES / 'original.flac', incoming2)
+    command('album-import-cleanup', {'name': 'ManualImport', 'importMode': 'copy', 'replaceExistingFiles': True, 'files': [{'path': str(incoming2), 'artistId': 2, 'albumId': 500, 'albumReleaseId': 500, 'trackIds': [500], 'quality': {'quality': {'id': 6, 'name': 'FLAC'}, 'revision': {'version': 1, 'real': 0}}, 'disableReleaseSwitching': True}]})
+    text = wait_for_log('route=artist-cleanup')
+    assert any('route=artist-cleanup' in line and 'cleaned=1' in line for line in text.splitlines()), text[-4000:]
+    assert not api('album/600')['monitored']
+    assert api('album/500')['monitored']
+    assert not (LIBRARY2 / 'Single600/Song.flac').exists()
+    retained = [Path(x['path']) for x in api('trackfile?artistId=2') if x['albumId'] == 500]
+    assert retained and all(p.exists() for p in retained)
+    # The delete-time guard revalidated content identity as part of each destructive call.
+    assert 'candidateReleaseId=600' in text and 'decision=revalidated action=delete' in text
+
+    # Mid-analysis candidate mutation: the decoder wrapper replaces the candidate file
+    # after the verifier's identity read but before/during its decode; the post-decode
+    # recheck must reject the run's own evidence and preserve the release.
+    stop()
+    sql(lambda db: seed_candidate(db, 601))
+    start()
+    candidate_path = LIBRARY2 / 'Single601/Song.flac'
+    mutate_candidate = write_wrapper('mutate-candidate', f"cp '{FIXTURES / 'late-sample.flac'}' '{candidate_path}'\nexec ffmpeg \"$@\"")
+    provider('notification', {'exactAudioDecoderPath': str(mutate_candidate)})
+    scan_second_artist('mid-analysis-mutation-preserves-release', '1 flagged for review')
+    assert api('album/601')['monitored'] and candidate_path.exists()
+    assert 'identity-changed-during-analysis' in host_log()
+    provider('notification', {'exactAudioDecoderPath': shutil.which('ffmpeg')})
+
+    # Decode failure mid-analysis: a corrupt candidate FLAC fails the native decoder.
+    stop()
+    sql(lambda db: (drop_candidate(db, 601), seed_candidate(db, 602, fixture='corrupt.flac')))
+    start()
+    scan_second_artist('decode-failure-mid-analysis-preserves-release', '1 flagged for review')
+    assert api('album/602')['monitored'] and (LIBRARY2 / 'Single602/Song.flac').exists()
+    assert 'decode-unavailable-or-invalid' in host_log()
+
+    # Decoder crash: the decoder process is killed by a signal during analysis.
+    stop()
+    sql(lambda db: (drop_candidate(db, 602), seed_candidate(db, 603)))
+    start()
+    crash_decoder = write_wrapper('crash-decoder', 'kill -9 $$\n')
+    provider('notification', {'exactAudioDecoderPath': str(crash_decoder)})
+    scan_second_artist('decoder-crash-preserves-release', '1 flagged for review')
+    assert api('album/603')['monitored'] and (LIBRARY2 / 'Single603/Song.flac').exists()
+    assert 'status=Unavailable' in host_log()
+    provider('notification', {'exactAudioDecoderPath': shutil.which('ffmpeg')})
+
+    # Unmonitor failure injection: a disposable-database trigger makes the album unmonitor
+    # write fail; files must be preserved and the failure accounted, then recovery cleans.
+    stop()
+    def block_unmonitor(db):
+        drop_candidate(db, 603)
+        seed_candidate(db, 604)
+        db.execute("CREATE TRIGGER issue49_block_unmonitor BEFORE UPDATE ON Albums WHEN NEW.Monitored = 0 BEGIN SELECT RAISE(ABORT, 'issue49 injected unmonitor failure'); END;")
+    sql(block_unmonitor)
+    start()
+    scan_second_artist('unmonitor-failure-injection-preserves-files', '1 unmonitor failures')
+    assert api('album/604')['monitored'] and (LIBRARY2 / 'Single604/Song.flac').exists()
+    assert 'unmonitor-failed-delete-skipped' in host_log()
+    stop()
+    sql(lambda db: db.execute('DROP TRIGGER issue49_block_unmonitor'))
+    start()
+    scan_second_artist('unmonitor-failure-recovery-cleans', '1 singles cleaned')
+    assert not api('album/604')['monitored'] and not (LIBRARY2 / 'Single604/Song.flac').exists()
+
+    # Delete failure injection: the candidate directory is made read-only so the native
+    # deletion fails; the release stays unmonitored with its file preserved and accounted.
+    stop()
+    sql(lambda db: seed_candidate(db, 605))
+    start()
+    guarded_dir = LIBRARY2 / 'Single605'
+    guarded_dir.chmod(0o555)
+    try:
+        scan_second_artist('delete-failure-injection-files-preserved', '1 delete failures')
+    finally:
+        guarded_dir.chmod(0o755)
+    assert not api('album/605')['monitored']
+    assert (guarded_dir / 'Song.flac').exists()
+    assert 'reason=delete-failed' in host_log()
+
+    # Shutdown cancellation: SIGTERM mid-decode cancels in-flight analysis through the
+    # dispatcher lifecycle; the release must abort to keep and clean on the next scan.
+    stop()
+    sql(lambda db: seed_candidate(db, 606))
+    start()
+    marker = WRAPPERS / 'decoder-started'
+    slow_decoder = write_wrapper('slow-decoder', f"printf started > '{marker}'\nsleep 4\nexec ffmpeg \"$@\"")
+    provider('notification', {'exactAudioDecoderPath': str(slow_decoder)})
+    value = api('command', {'name': 'UniqueSinglesScan', 'artistId': 2})
+    for _ in range(200):
+        if marker.exists():
+            break
+        time.sleep(.1)
+    assert marker.exists(), 'slow decoder never started; cannot inject mid-analysis shutdown'
+    stop()  # SIGTERM during the in-flight decode
+    cancelled_text = host_log()
+    tokens = [token for token in ('cancelled-or-time-budget', 'detail=cancelled', 'dispatcher-shutdown') if token in cancelled_text]
+    # Lidarr's shutdown does not wait for the in-flight plugin command, so its cancellation
+    # evidence line is not guaranteed to be drained before process exit; record it as
+    # best-effort. The safety outcome is asserted directly and deterministically instead:
+    # no destructive action may have started for the release being analyzed.
+    results['stages']['shutdown-cancellation'] = {'commandId': value['id'], 'decoderStarted': marker.exists(), 'cancellationTokensObserved': tokens}
+    assert (LIBRARY2 / 'Single606/Song.flac').exists(), 'cancelled analysis must not delete'
+    assert not any('singleId=606' in line and ('unmonitor success' in line or 'delete success' in line) for line in cancelled_text.splitlines()), 'destructive action during cancelled analysis'
+    assert not any('candidateReleaseId=606' in line and 'decision=revalidated' in line for line in cancelled_text.splitlines()), 'revalidated approval during cancelled analysis'
+    start()
+    provider('notification', {'exactAudioDecoderPath': shutil.which('ffmpeg')})
+    assert api('album/606')['monitored'], 'cancelled analysis must abort to keep'
+    scan_second_artist('cancellation-recovery-cleans', '1 singles cleaned')
+    assert not api('album/606')['monitored'] and not (LIBRARY2 / 'Single606/Song.flac').exists()
+
     results['completed'] = True
 finally:
     stop()
