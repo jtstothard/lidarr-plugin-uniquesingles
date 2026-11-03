@@ -23,6 +23,7 @@
     <Compile Include="SingleCleanupServiceTests.cs" />
     <Compile Include="ExactAudioCleanupTests.cs" />
     <Compile Include="ExactAudioVerifierTests.cs" />
+    <Compile Include="ExactAudioFollowupsTests.cs" />
     <Compile Include="Matching/TrackMatcherTests.cs" />
     <Compile Include="SingleCleanupOptionsTests.cs" />
     <Compile Include="UniqueSinglesImportCoordinatorTests.cs" />

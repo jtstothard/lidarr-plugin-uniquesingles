@@ -137,5 +137,46 @@ public class ExactAudioVerifierTests
         Assert.Equal(uncached, verifier.Compare(Fixture("original.flac"), Fixture(source), default));
     }
 
+    [Theory]
+    [InlineData("forged-md5.flac", "streaminfo-digest-disagreement")]
+    [InlineData("lying-rate.flac", "frame-disagrees-with-streaminfo")]
+    [InlineData("truncated.flac", "incomplete-decode")]
+    public void DecodeFailuresSurfaceStableGateTokens(string sourceFixture, string expectedToken)
+    {
+        // The reason records WHICH integrity bound failed, from this adapter's own invariant
+        // gate messages — never executable stderr, paths or framework exception text.
+        var evidence = new FfmpegExactAudioVerifier().Compare(Fixture("original.flac"), Fixture(sourceFixture), default);
+        Assert.Equal(AudioEvidenceStatus.Unavailable, evidence.Status);
+        Assert.StartsWith("decode-unavailable-or-invalid:", evidence.Reason, StringComparison.Ordinal);
+        Assert.Equal("decode-unavailable-or-invalid:" + expectedToken, evidence.Reason);
+    }
+
+    [Fact]
+    public void NonFlacInputSurfacesUnsupportedFormatToken()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "uniquesingles-44-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var mp3 = Path.Combine(directory, "not-a-flac.mp3");
+        File.WriteAllText(mp3, "not flac");
+        try
+        {
+            var evidence = new FfmpegExactAudioVerifier().Compare(Fixture("original.flac"), mp3, default);
+            Assert.Equal(AudioEvidenceStatus.Unavailable, evidence.Status);
+            Assert.Equal("decode-unavailable-or-invalid:unsupported-format", evidence.Reason);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public void FrameworkFileFailuresKeepOnlyExceptionTypeName()
+    {
+        var evidence = new FfmpegExactAudioVerifier().Compare(Fixture("original.flac"), Path.Combine(Path.GetTempPath(), "uniquesingles-missing-" + Guid.NewGuid().ToString("N") + ".flac"), default);
+        Assert.Equal(AudioEvidenceStatus.Unavailable, evidence.Status);
+        Assert.Equal("decode-unavailable-or-invalid:FileNotFoundException", evidence.Reason);
+    }
+
     private static string Fixture(string name) => Path.Combine(AppContext.BaseDirectory, "AudioFixtures", name);
 }

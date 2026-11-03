@@ -16,7 +16,9 @@ public readonly struct CleanupResult
     public int CandidatesChecked { get; }
 
     /// <summary>
-    /// Number of singles successfully cleaned (unmonitored and deleted).
+    /// Number of singles successfully unmonitored (cleanup-approved). Files are deleted after
+    /// unmonitoring, but deletion may legitimately not have occurred (no files, or a delete
+    /// failure recorded in <see cref="DeleteFailures"/>).
     /// </summary>
     public int Cleaned { get; }
 
@@ -30,6 +32,13 @@ public readonly struct CleanupResult
     /// Releases protected by an unmatched/exclusive track are excluded.
     /// </summary>
     public int ReviewNeeded { get; }
+
+    /// <summary>
+    /// Number of singles kept because they contain content with no counterpart anywhere in the
+    /// comparison pool (outcome=keep-exclusive). Reported separately from <see cref="Skipped"/>
+    /// so summary counters reconcile with per-release outcome lines.
+    /// </summary>
+    public int KeepExclusive { get; }
 
     /// <summary>
     /// Number of unmonitor failures.
@@ -48,13 +57,15 @@ public readonly struct CleanupResult
         int reviewNeeded,
         int unmonitorFailures,
         int deleteFailures,
-        int exactAudioReports = 0)
+        int exactAudioReports = 0,
+        int keepExclusive = 0)
     {
         ExactAudioReports = Math.Max(0, exactAudioReports);
         CandidatesChecked = Math.Max(0, candidatesChecked);
         Cleaned = Math.Max(0, cleaned);
         Skipped = Math.Max(0, skipped);
         ReviewNeeded = Math.Max(0, reviewNeeded);
+        KeepExclusive = Math.Max(0, keepExclusive);
         UnmonitorFailures = Math.Max(0, unmonitorFailures);
         DeleteFailures = Math.Max(0, deleteFailures);
     }
@@ -76,6 +87,7 @@ public readonly struct CleanupResult
             left.ReviewNeeded + right.ReviewNeeded,
             left.UnmonitorFailures + right.UnmonitorFailures,
             left.DeleteFailures + right.DeleteFailures,
-            left.ExactAudioReports + right.ExactAudioReports);
+            left.ExactAudioReports + right.ExactAudioReports,
+            left.KeepExclusive + right.KeepExclusive);
     }
 }

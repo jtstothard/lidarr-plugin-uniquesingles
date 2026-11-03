@@ -67,6 +67,24 @@ public class SingleCleanupOptions
     }
 
     /// <summary>
+    /// Returns a copy of this snapshot with a different audio-analysis cancellation token,
+    /// preserving every other setting (including the settings precedence contract). Entry
+    /// points use this to link dispatcher cancellation into the resolved options.
+    /// </summary>
+    public SingleCleanupOptions WithAudioCancellation(System.Threading.CancellationToken audioCancellation)
+    {
+        return new SingleCleanupOptions(
+            DurationToleranceMs,
+            ComparisonReleaseTypes,
+            Tier3Action,
+            ExactAudioAnalysis,
+            ExactAudioDecoderPath,
+            audioCancellation,
+            AudioBudget,
+            ExactAudioCleanup);
+    }
+
+    /// <summary>
     /// Determines whether an album should be used as a comparison track source
     /// based on the configured comparison release types.
     /// </summary>

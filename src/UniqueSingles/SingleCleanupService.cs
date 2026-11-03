@@ -38,6 +38,7 @@ public class SingleCleanupService : ISingleCleanupService
     private readonly ITrackService _trackService;
     private readonly IMediaFileService _mediaFileService;
     private readonly IDeleteMediaFiles _deleteMediaFiles;
+    private readonly ICleanupHistoryRecorder _historyRecorder;
     private readonly Logger _logger;
 
     public SingleCleanupService(
@@ -45,12 +46,14 @@ public class SingleCleanupService : ISingleCleanupService
         ITrackService trackService,
         IMediaFileService mediaFileService,
         IDeleteMediaFiles deleteMediaFiles,
+        ICleanupHistoryRecorder historyRecorder,
         Logger logger)
     {
         _albumService = albumService ?? throw new ArgumentNullException(nameof(albumService));
         _trackService = trackService ?? throw new ArgumentNullException(nameof(trackService));
         _mediaFileService = mediaFileService ?? throw new ArgumentNullException(nameof(mediaFileService));
         _deleteMediaFiles = deleteMediaFiles ?? throw new ArgumentNullException(nameof(deleteMediaFiles));
+        _historyRecorder = historyRecorder ?? throw new ArgumentNullException(nameof(historyRecorder));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -188,9 +191,10 @@ public class SingleCleanupService : ISingleCleanupService
 
         var albums = GetAlbumsForArtist(artist);
         var comparisonTracks = GetComparisonTracksByAlbum(albums, options);
-        var candidateSingles = albums
-            .Where(a => IsSingle(a) && a.Id != importedAlbum.Id)
-            .ToList();
+        var candidateSingles = OrderCandidatesForReviewPriority(
+            albums.Where(a => IsSingle(a) && a.Id != importedAlbum.Id).ToList(),
+            comparisonTracks,
+            options);
 
         _logger.Info(
             "UniqueSingles cleanup start: artistId={0} artist='{1}' importedAlbumId={2} importedAlbum='{3}' albumTrackCount={4} candidateSingles={5} comparisonReleaseTypes='{6}' durationToleranceMs={7} tier3Action='{8}'",
@@ -231,7 +235,7 @@ public class SingleCleanupService : ISingleCleanupService
 
         var albums = GetAlbumsForArtist(artist);
         var comparisonTracks = GetComparisonTracksByAlbum(albums, options);
-        var candidateSingles = albums.Where(IsSingle).ToList();
+        var candidateSingles = OrderCandidatesForReviewPriority(albums.Where(IsSingle).ToList(), comparisonTracks, options);
 
         _logger.Info(
             "UniqueSingles scan start: artistId={0} artist='{1}' albumTrackCount={2} candidateSingles={3} comparisonReleaseTypes='{4}' durationToleranceMs={5} tier3Action='{6}'",
@@ -343,8 +347,11 @@ public class SingleCleanupService : ISingleCleanupService
         var check = TrackMatcher.CheckSingle(downloadedSingleTracks, albumTracks, options.DurationToleranceMs);
         if (!check.IsRedundant && options.ExactAudioAnalysis)
         {
+            // Review-needed candidates draw on the budget's reserved review lane and are ordered
+            // first, so comparison attempts are not consumed by earlier non-review candidates.
+            var reviewPriority = NeedsReview(check, options.Tier3Action);
             var report = new ExactAudioReleaseReporter(_mediaFileService, _logger, new FfmpegExactAudioVerifier(options.ExactAudioDecoderPath))
-                .Analyze(single, singleTracks, comparisonTracks, options);
+                .Analyze(single, singleTracks, comparisonTracks, options, reviewPriority);
             if (report.Complete)
             {
                 if (options.ExactAudioCleanup)
@@ -386,6 +393,14 @@ public class SingleCleanupService : ISingleCleanupService
             }
             else
             {
+                // Exclusive-content keeps get their own aggregate so summary counters reconcile
+                // with the per-release outcome=keep-exclusive lines; they are no longer folded
+                // into skipped. Review-needed outcomes remain skipped + reviewNeeded.
+                if (check.TrackResults.Any(r => r.Tier == MatchTier.NoMatch))
+                {
+                    return new CleanupResult(candidatesChecked, cleaned, 0, 0, unmonitorFailures, deleteFailures, keepExclusive: 1);
+                }
+
                 if (NeedsReview(check, options.Tier3Action))
                 {
                     reviewNeeded = 1;
@@ -637,6 +652,65 @@ public class SingleCleanupService : ISingleCleanupService
             && check.TrackResults.Any(r => r.Tier == MatchTier.Tier3_TitleOnly);
     }
 
+    /// <summary>
+    /// Orders candidate singles so review-needed candidates are analyzed first when exact-audio
+    /// analysis is enabled. Audio comparison budgets are shared across the whole command/import;
+    /// without prioritization, earlier candidates can exhaust the budget and leave review-queue
+    /// releases unresolved (production finding 2026-10-29). Classification uses the same metadata
+    /// check the cleanup path performs; a misprediction only affects ordering, never authority.
+    /// </summary>
+    private List<Album> OrderCandidatesForReviewPriority(List<Album> candidateSingles, Dictionary<int, List<Track>> comparisonTracks, SingleCleanupOptions options)
+    {
+        if (!options.ExactAudioAnalysis || candidateSingles.Count < 2)
+        {
+            return candidateSingles;
+        }
+
+        var prioritized = candidateSingles
+            .Select(a => (Album: a, ReviewPriority: WouldFlagForReview(a, comparisonTracks, options)))
+            .OrderByDescending(candidate => candidate.ReviewPriority) // stable: preserves order within each group
+            .ToList();
+
+        var reviewFirst = prioritized.Where(candidate => candidate.ReviewPriority).Select(candidate => candidate.Album.Id).ToList();
+        if (reviewFirst.Count > 0 && prioritized[0].Album.Id != candidateSingles[0].Id)
+        {
+            _logger.Info(
+                "UniqueSingles exact-audio priority: candidateReleaseIds={0} reason=review-priority-first",
+                string.Join(",", reviewFirst));
+        }
+
+        return prioritized.Select(candidate => candidate.Album).ToList();
+    }
+
+    private bool WouldFlagForReview(Album single, Dictionary<int, List<Track>> comparisonTracks, SingleCleanupOptions options)
+    {
+        try
+        {
+            if (!single.Monitored)
+            {
+                return false;
+            }
+
+            var singleTracks = _trackService.GetTracksByAlbum(single.Id) ?? new List<Track>();
+            var downloadedSingleTracks = singleTracks.Where(t => t.HasFile).ToList();
+            if (downloadedSingleTracks.Count == 0)
+            {
+                return false;
+            }
+
+            var albumTracks = comparisonTracks
+                .Where(entry => entry.Key != single.Id)
+                .SelectMany(entry => entry.Value)
+                .ToList();
+            return NeedsReview(TrackMatcher.CheckSingle(downloadedSingleTracks, albumTracks, options.DurationToleranceMs), options.Tier3Action);
+        }
+        catch (Exception)
+        {
+            // Classification is best-effort: the authoritative decision is recomputed per candidate.
+            return false;
+        }
+    }
+
     private void LogMatchDecision(Artist artist, Album single, Album? comparisonAlbumContext, SingleRedundancyCheck check, Tier3Action tier3Action = Tier3Action.FlagOnly, Dictionary<int, List<Track>>? comparisonTracks = null)
     {
         var decision = check.IsRedundant ? "cleanup-approved" : "cleanup-skipped";
@@ -726,6 +800,20 @@ public class SingleCleanupService : ISingleCleanupService
                 comparisonAlbumContext?.Id,
                 comparisonAlbumContext?.Title,
                 check.SummaryReason);
+            // Lidarr History audit row; recorder failures never affect the cleanup decision.
+            try
+            {
+                _historyRecorder.RecordUnmonitor(artist, single, check.SummaryReason);
+            }
+            catch (Exception historyEx)
+            {
+                _logger.Warn(
+                    historyEx,
+                    "UniqueSingles history: action=unmonitor-record-failed artistId={0} albumId={1} reason=history-recorder-threw",
+                    artist.Id,
+                    single.Id);
+            }
+
             return true;
         }
         catch (Exception ex)

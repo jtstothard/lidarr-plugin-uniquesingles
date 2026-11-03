@@ -21,7 +21,7 @@ public sealed class ExactAudioReleaseReporter
         _verifier = verifier;
     }
 
-    public ExactAudioReleaseReport Analyze(Album single, List<Track> requiredTracks, Dictionary<int, List<Track>> sources, SingleCleanupOptions options)
+    public ExactAudioReleaseReport Analyze(Album single, List<Track> requiredTracks, Dictionary<int, List<Track>> sources, SingleCleanupOptions options, bool reviewPriority = false)
     {
         var complete = requiredTracks.Count > 0;
         var attempts = new List<AudioTrackEvidence>();
@@ -45,7 +45,7 @@ public sealed class ExactAudioReleaseReporter
                     evidence = new AudioEvidence(AudioEvidenceStatus.Unavailable, "required-candidate-file-missing");
                 else if (options.AudioCancellation.IsCancellationRequested)
                     evidence = new AudioEvidence(AudioEvidenceStatus.Unavailable, "cancelled");
-                else if (!options.AudioBudget.TryTake())
+                else if (!options.AudioBudget.TryTake(reviewPriority))
                     evidence = new AudioEvidence(AudioEvidenceStatus.Unavailable, "comparison-budget-exhausted");
                 else
                 {
@@ -87,8 +87,10 @@ public sealed class ExactAudioReleaseReporter
         }
 
         var report = new ExactAudioReleaseReport(single.Id, complete, attempts.AsReadOnly());
-        _logger.Info("UniqueSingles exact-audio release: candidateReleaseId={0} decision={1} requiredTracks={2} cleanupAuthority=none",
-            single.Id, report.Decision, requiredTracks.Count);
+        // cleanupAuthority reports the authority this run carries from settings, not a grant:
+        // only the later exact-audio cleanup revalidation lines record actual destructive approval.
+        _logger.Info("UniqueSingles exact-audio release: candidateReleaseId={0} decision={1} requiredTracks={2} cleanupAuthority={3} reviewPriority={4}",
+            single.Id, report.Decision, requiredTracks.Count, options.ExactAudioCleanup ? "exact-audio-cleanup" : "none", reviewPriority);
         return report;
     }
 }

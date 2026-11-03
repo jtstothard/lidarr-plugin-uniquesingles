@@ -25,12 +25,21 @@ Windows and production deployment remain unqualified.
    unmatched; `unresolved-review` means investigation remains;
    `report-only-exact-duplicate` means every catalog track has verified coverage.
    Track diagnostics remain available even when an exclusive B-side suppresses
-   the release review count. `Unavailable` is never deletion proof.
+   the release review count. `Unavailable` is never deletion proof. Scan/import
+   summaries report exclusive-content keeps as their own `keepExclusive` aggregate
+   (not inside `skipped`), and `cleaned` counts releases unmonitored — deletion is
+   attempted but not guaranteed (watch `deleteFailures`).
 5. **Exact FLAC cleanup** is a separate explicit opt-in and enables analysis itself.
    It uses the same import/scan path and requires every track plus immediate
    source eligibility and content revalidation. An abort or decoder failure
    preserves remaining files; after a deletion-stage failure a release can remain
    unmonitored, so inspect both monitoring and file outcomes.
+6. Auditability outside plugin logs: unmonitor actions write a Lidarr History row
+   per release (event type Unknown, `Plugin=UniqueSingles`, `Action=Unmonitor`,
+   `Reason=…`), and plugin file deletions appear as Lidarr's own
+   `TrackFileDeleted` history events because cleanup deletes through Lidarr's
+   deletion service. History write failures are logged and never alter a cleanup
+   decision.
 
 To reproduce the disposable qualification, build Release, prepare the pinned host
 archive, then run `python3 scripts/qualify-disposable-host.py` (Python 3.12+). It
@@ -114,16 +123,30 @@ A nonzero stored PCM MD5 is independently checked against full decoded PCM; matc
 stored checksums alone never establish equality. Missing/zero MD5 is permitted only
 with the same full decoding, frame-integrity and sample-count checks.
 
-One shared options snapshot permits 32 candidate pairs across the command/import,
-including multiple artists; cache hits consume the same pair budget as misses. One process-wide
+One shared options snapshot permits 64 candidate pairs across the command/import,
+including multiple artists; cache hits consume the same pair budget as misses. The
+total is split into a 32-pair shared lane and a 32-pair lane reserved for
+review-needed candidates: non-review candidates can only draw from the shared lane,
+while review-priority candidates may draw from the whole budget. Scan and import
+additionally order review-needed candidates (title-only matches that would flag for
+review on metadata alone) before other candidates, so earlier candidates cannot
+starve the review queue of comparison attempts — the 2026-10-29 production scan
+previously left all 20 review-needed releases `comparison-budget-exhausted` against
+a 32-pair budget consumed by earlier candidates. The `exact-audio release:` line
+carries `reviewPriority=` to audit which lane applied. One process-wide
 slot bounds decoder concurrency. Each pair has a 30-second deadline including slot
 wait, cancellation, reading and both decodes. Each compressed input is at most
 64 MiB; each decoded file at most 256 MiB; PCM is hashed incrementally and diagnostics
 are drained with a bounded line buffer. These deliberately conservative limits
 can defer long/high-resolution files. Budget/deadline/cancellation failures produce
 unavailable evidence and cannot produce a complete duplicate report. Options expose
-an operation cancellation token; the existing synchronous Lidarr entry points do
-not yet supply a dispatcher cancellation token. Decoder children are killed and pipe
+an operation cancellation token, and the scan command and release-import entry
+points now link Lidarr's dispatcher lifecycle into it: Lidarr's synchronous plugin
+entry points (`IExecute.Execute`, `NotificationBase.OnReleaseImport`) receive no
+per-command token, so the hub token is cancelled from the `ApplicationShutdownRequested`
+lifecycle event that the dispatcher itself also handles. On that signal the scan
+stops before the next artist, in-flight decoder work returns unavailable evidence,
+and exact-cleanup revalidation aborts to keep. Decoder children are killed and pipe
 tasks joined on failure/cancellation. No performance benchmark is claimed.
 
 ## Subsequent tickets
@@ -201,8 +224,9 @@ returns unavailable. Concurrent changes after this final observation remain poss
 recheck source eligibility/survivor protections. Compare does not issue deletion permits.
 The immutable AudioEvidence/AudioTrackEvidence contract is unchanged.
 
-One process-wide slot serializes identity reads, cache access and decoding. The existing
-32-pair command/import budget applies even to hits; each comparison still has the shared
+One process-wide slot serializes identity reads, cache access and decoding. The
+command/import budget now totals 64 pairs (32 shared plus a 32-pair review-reserved
+lane) and still applies to hits; each comparison still has the shared
 30-second deadline. Inputs remain 64 MiB each, decoder identity reads at most 256 MiB,
 and decoded PCM remains capped at 256 MiB. Cancellation is checked between identity
 read chunks; an OS filesystem read itself can block beyond the deadline. No separate
@@ -214,3 +238,38 @@ that file/build; it does not attest transitive shared libraries, interpreter scr
 runtime-loaded plugins. Deployment changes to those dependencies require restarting
 Lidarr to discard process-local evidence and rerunning decoder qualification. Linux,
 Windows, production deployment and live dispatcher acceptance remain unverified.
+
+## Follow-up observability, cancellation and budgeting (#44)
+
+The `exact-audio release:` line reports the authority state the run carries from
+settings — `cleanupAuthority=exact-audio-cleanup` when the explicit cleanup opt-in
+is enabled, `cleanupAuthority=none` for report-only analysis — instead of a
+hard-coded literal. The field describes configured authority, not a grant: every
+actual destructive approval still appears only on the later
+`exact-audio cleanup: … decision=revalidated` lines. The same line carries
+`reviewPriority=` recording which budget lane the release used.
+
+Decode failures keep their `decode-unavailable-or-invalid:` prefix and now append a
+stable token naming the adapter's own integrity gate that failed (for example
+`invalid-streaminfo`, `frame-disagrees-with-streaminfo`,
+`streaminfo-digest-disagreement`, `unsupported-format`). Framework exceptions keep
+only the exception type name; executable stderr, paths and framework exception
+messages are never structured evidence. The 2026-10-29 production decode failure
+against Against Me! "Pretty Girls (The Mover)" was `decode-unavailable-or-invalid`
+with no gate detail; future occurrences will name the gate without code changes.
+The production file itself was out of scope for this ticket.
+
+Summary counters reconcile with per-release `outcome=` lines: `keepExclusive`
+counts `outcome=keep-exclusive` releases separately from `skipped` (which still
+includes unresolved reviews alongside their `reviewNeeded` count), and `cleaned`
+counts releases unmonitored — file deletion is attempted after unmonitoring but
+is not guaranteed, so audit `deleteFailures` alongside it.
+
+Cleanup actions are auditable outside plugin logs. Unmonitor actions write a
+Lidarr History row per release through the host's own history repository, with
+event type Unknown (Lidarr has no unmonitor event), `SourceTitle=UniqueSingles`
+and `Plugin`/`Action`/`Reason` data; file deletions already appear as Lidarr's
+`TrackFileDeleted` history events because the plugin deletes through
+`IDeleteMediaFiles`, whose `MediaFileDeletionService` → `MediaFileService`
+publishes `TrackFileDeletedEvent` and Lidarr's `EntityHistoryService` records it.
+History write failures log a warning and never alter a cleanup decision.

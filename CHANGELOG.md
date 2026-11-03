@@ -6,6 +6,12 @@ All notable changes to Unique Singles will be documented in this file.
 
 ### Added
 
+- Lidarr History audit rows for plugin unmonitor actions (#44). Plugin file deletions were already recorded by Lidarr's own `TrackFileDeleted` history events because cleanup deletes through Lidarr's deletion service; unmonitors now additionally write album-level rows attributed to `UniqueSingles` (event type Unknown, `Plugin`/`Action`/`Reason` data), and a history write failure never affects the cleanup decision.
+
+- Dispatcher cancellation wiring for exact-audio analysis (#44). The scan command and the release-import notification link Lidarr's `ApplicationShutdownRequested` lifecycle signal (the dispatcher signal available to synchronous plugin entry points) into the audio-analysis cancellation option; a shutting-down host stops the artist loop between artists and abandons in-flight decoder work as unavailable evidence.
+
+- Review-priority comparison budgeting for exact-audio analysis (#44). The per-command budget is raised from 32 to 64 pair comparisons and split: 32 shared plus a 32-comparison lane reserved for review-needed candidates, and review-needed candidates are analyzed before other candidates in a scan/import. Earlier candidates can no longer starve the review queue of comparison attempts, resolving the 2026-10-29 production scan where all 20 review-needed releases ended `comparison-budget-exhausted`.
+
 - Reproducible disposable Lidarr command/import qualification with synthetic FLAC files and operations evidence (#42).
 
 - Separate default-off exact FLAC cleanup opt-in with complete-track coverage, immediate content/source revalidation, and scan/import adversarial regressions (#41).
@@ -21,6 +27,12 @@ All notable changes to Unique Singles will be documented in this file.
 - CodeQL security scanning workflow
 
 ### Fixed
+
+- The `exact-audio release:` evidence line now reports the real cleanup authority state (`cleanupAuthority=exact-audio-cleanup` when the explicit cleanup opt-in is enabled, `none` for report-only) plus a `reviewPriority=` label, instead of a hard-coded `cleanupAuthority=none` even when cleanup proceeds (#44). Actual destructive grants remain on the later `decision=revalidated` lines.
+
+- Scan and import summaries report exclusive-content keeps as their own `keepExclusive` aggregate instead of folding them into `skipped`, so counters reconcile with the per-release `outcome=` lines; completion messages now state that `cleaned` counts releases unmonitored (deletion not guaranteed) (#44).
+
+- Decode failures surface a stable reason token naming the failed integrity gate (for example `decode-unavailable-or-invalid:streaminfo-digest-disagreement`) instead of only the exception type name, without logging executable stderr, paths or framework exception text (#44).
 
 - Report-only exact-audio analysis preserves existing Tier-3 AutoClean authority on scan and import (#37).
 

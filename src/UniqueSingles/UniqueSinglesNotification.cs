@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using FluentValidation.Results;
 using NLog;
 using NzbDrone.Core.MediaFiles;
@@ -17,6 +18,7 @@ namespace NzbDrone.Core.Plugins;
 public class UniqueSinglesNotification : NotificationBase<UniqueSinglesSettings>
 {
     private readonly IUniqueSinglesImportCoordinator _importCoordinator;
+    private readonly IAudioAnalysisCancellation _audioAnalysisCancellation;
     private readonly Logger _logger;
 
     public UniqueSinglesNotification(
@@ -24,20 +26,32 @@ public class UniqueSinglesNotification : NotificationBase<UniqueSinglesSettings>
         ITrackService trackService,
         IMediaFileService mediaFileService,
         IDeleteMediaFiles deleteMediaFiles,
+        ICleanupHistoryRecorder historyRecorder,
+        IAudioAnalysisCancellation audioAnalysisCancellation,
         Logger logger)
-        : this(new SingleCleanupService(albumService, trackService, mediaFileService, deleteMediaFiles, logger), logger)
+        : this(new SingleCleanupService(albumService, trackService, mediaFileService, deleteMediaFiles, historyRecorder, logger), audioAnalysisCancellation, logger)
     {
     }
 
-    internal UniqueSinglesNotification(ISingleCleanupService cleanupService, Logger logger)
-        : this(new UniqueSinglesImportCoordinator(cleanupService, logger), logger)
+    internal UniqueSinglesNotification(ISingleCleanupService cleanupService, IAudioAnalysisCancellation audioAnalysisCancellation, Logger logger)
+        : this(new UniqueSinglesImportCoordinator(cleanupService, logger), audioAnalysisCancellation, logger)
     {
     }
 
-    internal UniqueSinglesNotification(IUniqueSinglesImportCoordinator importCoordinator, Logger logger)
+    internal UniqueSinglesNotification(IUniqueSinglesImportCoordinator importCoordinator, IAudioAnalysisCancellation audioAnalysisCancellation, Logger logger)
     {
         _importCoordinator = importCoordinator ?? throw new ArgumentNullException(nameof(importCoordinator));
+        _audioAnalysisCancellation = audioAnalysisCancellation ?? throw new ArgumentNullException(nameof(audioAnalysisCancellation));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <summary>
+    /// Test-only convenience: an uncancelled cancellation hub, so existing coordinator-level tests
+    /// keep constructing the notification without dispatcher plumbing.
+    /// </summary>
+    internal UniqueSinglesNotification(IUniqueSinglesImportCoordinator importCoordinator, Logger logger)
+        : this(importCoordinator, new AudioAnalysisCancellation(logger), logger)
+    {
     }
 
     public override string Name => UniqueSinglesPlugin.DisplayName;
@@ -81,7 +95,13 @@ public class UniqueSinglesNotification : NotificationBase<UniqueSinglesSettings>
                 return;
             }
 
-            _importCoordinator.HandleImport(message, ResolveCleanupOptions());
+            // Link the dispatcher's observable lifecycle signal into the audio-analysis option so
+            // decoder work stops when the host shuts down. Settings resolution and precedence are
+            // unchanged; only the cancellation token is composed.
+            var options = ResolveCleanupOptions();
+            using var dispatcherCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                options.AudioCancellation, _audioAnalysisCancellation.Token);
+            _importCoordinator.HandleImport(message, options.WithAudioCancellation(dispatcherCancellation.Token));
         }
         catch (Exception ex)
         {
