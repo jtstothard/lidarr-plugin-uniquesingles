@@ -113,7 +113,9 @@ public static class TrackMatcher
     /// do NOT make the single redundant.
     /// Uses the default 3000 ms duration tolerance.
     /// </summary>
-    /// <param name="singleTracks">All tracks on the single release.</param>
+    /// <param name="singleTracks">All tracks on the single release (including undownloaded
+    /// ones — every catalog track without a redundant match protects the release as exclusive
+    /// content, #17).</param>
     /// <param name="albumTracks">All tracks from monitored albums/EPs.</param>
     /// <returns>A SingleRedundancyCheck with per-track results and overall assessment.</returns>
     public static SingleRedundancyCheck CheckSingle(List<Track> singleTracks, List<Track> albumTracks)
