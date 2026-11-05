@@ -344,7 +344,12 @@ public class SingleCleanupService : ISingleCleanupService
         }
 
         ExactAudioReleaseReport? cleanupReport = null;
-        var check = TrackMatcher.CheckSingle(downloadedSingleTracks, albumTracks, options.DurationToleranceMs);
+        // Whole-release protection (#17): every catalog track protects the release, including
+        // undownloaded ones. A track without a Tier-1/Tier-2 redundant match is exclusive
+        // content no matter whether it has a file yet, matching the strict all-catalog-tracks
+        // rule the exact-audio path already applies. Metadata evidence alone therefore never
+        // cleans a release whose catalog contains unmatched exclusive tracks.
+        var check = TrackMatcher.CheckSingle(singleTracks, albumTracks, options.DurationToleranceMs);
         if (!check.IsRedundant && options.ExactAudioAnalysis)
         {
             // Review-needed candidates draw on the budget's reserved review lane and are ordered
@@ -584,7 +589,9 @@ public class SingleCleanupService : ISingleCleanupService
             return;
         }
 
-        var check = TrackMatcher.CheckSingle(downloadedSingleTracks, albumTracks);
+        // Whole-release protection (#17): evaluate all catalog tracks, including undownloaded
+        // ones, so an exclusive track without files keeps the release (mirrors the stats path).
+        var check = TrackMatcher.CheckSingle(singleTracks, albumTracks);
         LogMatchDecision(artist, single, comparisonAlbumContext, check);
 
         if (!check.IsRedundant)
@@ -724,7 +731,9 @@ public class SingleCleanupService : ISingleCleanupService
                 .Where(entry => entry.Key != single.Id)
                 .SelectMany(entry => entry.Value)
                 .ToList();
-            return NeedsReview(TrackMatcher.CheckSingle(downloadedSingleTracks, albumTracks, options.DurationToleranceMs), options.Tier3Action);
+            // Classification mirrors the authority check, which evaluates every catalog track
+            // (#17): undownloaded exclusive tracks make the outcome keep-exclusive, not review.
+            return NeedsReview(TrackMatcher.CheckSingle(singleTracks, albumTracks, options.DurationToleranceMs), options.Tier3Action);
         }
         catch (Exception)
         {

@@ -1767,4 +1767,108 @@ public partial class SingleCleanupServiceTests
         Assert.Equal(result.ReviewNeeded, logger.InfoMessages.Count(m => m.Contains("outcome=unresolved-review")));
         Assert.Equal(result.KeepExclusive, logger.InfoMessages.Count(m => m.Contains("outcome=keep-exclusive")));
     }
+
+    // ============================================================
+    // Whole-release protection over undownloaded catalog tracks (#17)
+    // ============================================================
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Cleanup_DownloadedRedundantASideWithUndownloadedExclusiveBSide_KeepsRelease(bool viaImport)
+    {
+        var artist = Artist();
+        var imported = Album(100, "Imported Album", "Album");
+        var single = Album(200, "Hit Single", "Single");
+        var albumService = new RecordingAlbumService(imported, single);
+        var logger = new RecordingLogger();
+        var trackService = new RecordingTrackService()
+            .WithTracks(imported.Id,
+                Track("A Side", 180000, "album-a", fileId: 11))
+            .WithTracks(single.Id,
+                Track("A Side", 180000, "single-a", fileId: 21),          // Downloaded, Tier-2 redundant
+                Track("Exclusive B Side", 190000, "single-b", fileId: 0)); // Undownloaded, no match → exclusive
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(901, single.Id, "/music/a-side.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, logger);
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album" }, Tier3Action.FlagOnly);
+
+        var result = viaImport
+            ? service.CleanupWithOptions(artist, imported, options)
+            : service.ScanArtistWithOptions(artist, options);
+
+        // The undownloaded exclusive B-side protects the whole release: keep-exclusive,
+        // no unmonitor, no deletion — same strict rule as the exact-audio path.
+        Assert.Equal(1, result.CandidatesChecked);
+        Assert.Equal(0, result.Cleaned);
+        Assert.Equal(0, result.Skipped);
+        Assert.Equal(0, result.ReviewNeeded);
+        Assert.Equal(1, result.KeepExclusive);
+        Assert.Empty(albumService.SetMonitoredCalls);
+        Assert.True(single.Monitored);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+        Assert.Contains(logger.InfoMessages, m => m.Contains("outcome=keep-exclusive") && m.Contains("singleId=200"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Cleanup_AllCatalogTracksRedundantIncludingUndownloaded_CleansRelease(bool viaImport)
+    {
+        var artist = Artist();
+        var imported = Album(100, "Imported Album", "Album");
+        var single = Album(200, "Hit Single", "Single");
+        var albumService = new RecordingAlbumService(imported, single);
+        var trackService = new RecordingTrackService()
+            .WithTracks(imported.Id,
+                Track("A Side", 180000, "album-a", fileId: 11),
+                Track("B Side", 200000, "album-b", fileId: 12))
+            .WithTracks(single.Id,
+                Track("A Side", 181000, "single-a", fileId: 21), // Downloaded, Tier-2 redundant
+                Track("B Side", 201000, "single-b", fileId: 0)); // Undownloaded, but Tier-2 redundant
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(901, single.Id, "/music/a-side.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album" }, Tier3Action.FlagOnly);
+
+        var result = viaImport
+            ? service.CleanupWithOptions(artist, imported, options)
+            : service.ScanArtistWithOptions(artist, options);
+
+        // Full-catalog redundancy: cleanup behavior is unchanged by the whole-release rule.
+        Assert.Equal(1, result.CandidatesChecked);
+        Assert.Equal(1, result.Cleaned);
+        Assert.Equal(0, result.Skipped);
+        Assert.Equal(0, result.KeepExclusive);
+        Assert.Contains((single.Id, false), albumService.SetMonitoredCalls);
+        Assert.False(single.Monitored);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Fact]
+    public void LegacyCleanupSinglesForArtist_UndownloadedExclusiveTrack_DoesNotUnmonitorOrDelete()
+    {
+        var artist = Artist();
+        var importedAlbum = Album(100, "Imported", "Album");
+        var single = Album(200, "Hit Single", "Single");
+        var albumService = new RecordingAlbumService(importedAlbum, single);
+        var trackService = new RecordingTrackService()
+            .WithTracks(importedAlbum.Id,
+                Track("A Side", 180000, "album-a", fileId: 11))
+            .WithTracks(single.Id,
+                Track("A Side", 180000, "single-a", fileId: 21),          // Downloaded, Tier-2 redundant
+                Track("Exclusive B Side", 190000, "single-b", fileId: 0)); // Undownloaded, no match → exclusive
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(901, single.Id, "/music/a-side.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles);
+
+        service.CleanupSinglesForArtist(artist, importedAlbum);
+
+        Assert.Empty(albumService.SetMonitoredCalls);
+        Assert.True(single.Monitored);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+    }
 }
