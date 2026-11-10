@@ -37,6 +37,14 @@ public class SingleCleanupOptions
     /// </summary>
     public Tier3Action Tier3Action { get; }
 
+    /// <summary>
+    /// Gets whether monitored singles with no downloaded files may be eagerly unmonitored
+    /// as soon as every catalog track is Tier-1/Tier-2 redundant (#26). Purely preventive:
+    /// the eager path never deletes files and never touches releases with downloaded
+    /// content. Defaults to true (the behavior issue #26 asks for).
+    /// </summary>
+    public bool EagerUnmonitorRedundantSingles { get; }
+
     public SingleCleanupOptions(
         int durationToleranceMs,
         HashSet<string> comparisonReleaseTypes,
@@ -45,9 +53,11 @@ public class SingleCleanupOptions
         string exactAudioDecoderPath = "ffmpeg",
         System.Threading.CancellationToken audioCancellation = default,
         AudioAnalysisBudget? audioBudget = null,
-        bool exactAudioCleanup = false)
+        bool exactAudioCleanup = false,
+        bool eagerUnmonitorRedundantSingles = true)
     {
         ExactAudioCleanup = exactAudioCleanup;
+        EagerUnmonitorRedundantSingles = eagerUnmonitorRedundantSingles;
         ExactAudioAnalysis = exactAudioAnalysis || exactAudioCleanup;
         ExactAudioDecoderPath = string.IsNullOrWhiteSpace(exactAudioDecoderPath) ? "ffmpeg" : exactAudioDecoderPath;
         AudioCancellation = audioCancellation;
@@ -81,7 +91,8 @@ public class SingleCleanupOptions
             ExactAudioDecoderPath,
             audioCancellation,
             AudioBudget,
-            ExactAudioCleanup);
+            ExactAudioCleanup,
+            EagerUnmonitorRedundantSingles);
     }
 
     /// <summary>

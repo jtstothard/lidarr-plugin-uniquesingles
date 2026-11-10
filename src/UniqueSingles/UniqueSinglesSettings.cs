@@ -37,6 +37,7 @@ public class UniqueSinglesSettings : IProviderConfig
         ReleaseTypesToCheck = DefaultReleaseTypesToCheck;
         Tier3Action = Tier3Action.FlagOnly;
         ScanIntervalMinutes = 1440;
+        EagerUnmonitorRedundantSingles = true;
     }
 
     [FieldDefinition(0, Label = "Duration tolerance (ms)", Type = FieldType.Number, HelpText = "Maximum duration difference for title + duration matching. Defaults to 3000 ms.")]
@@ -60,6 +61,9 @@ public class UniqueSinglesSettings : IProviderConfig
     [FieldDefinition(6, Label = "Exact FLAC cleanup", Type = FieldType.Checkbox, HelpText = "Explicitly allow whole-release cleanup after complete exact verification and immediate content/source revalidation. Defaults off. Requires FFmpeg.")]
     public bool ExactAudioCleanup { get; set; }
 
+    [FieldDefinition(7, Label = "Eagerly unmonitor redundant singles", Type = FieldType.Checkbox, HelpText = "Unmonitor a monitored single with no downloaded files as soon as every catalog track is Tier-1/Tier-2 redundant against your downloaded library — at metadata refresh, add, and monitoring change, before anything is grabbed. Prevents redundant downloads. On by default; never deletes files.")]
+    public bool EagerUnmonitorRedundantSingles { get; set; } = true;
+
     /// <summary>
     /// Converts settings to a validated SingleCleanupOptions snapshot.
     /// The ReleaseTypesToCheck field persists which release types are used for comparison tracks.
@@ -68,7 +72,7 @@ public class UniqueSinglesSettings : IProviderConfig
     public SingleCleanupOptions ToCleanupOptions()
     {
         var releaseTypes = ParseReleaseTypes(ReleaseTypesToCheck);
-        return new SingleCleanupOptions(DurationToleranceMs, releaseTypes, Tier3Action, ExactAudioAnalysis, ExactAudioDecoderPath, exactAudioCleanup: ExactAudioCleanup);
+        return new SingleCleanupOptions(DurationToleranceMs, releaseTypes, Tier3Action, ExactAudioAnalysis, ExactAudioDecoderPath, exactAudioCleanup: ExactAudioCleanup, eagerUnmonitorRedundantSingles: EagerUnmonitorRedundantSingles);
     }
 
     private static HashSet<string> ParseReleaseTypes(string? releaseTypesString)

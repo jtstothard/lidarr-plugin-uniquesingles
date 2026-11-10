@@ -26,7 +26,14 @@ public class SingleCleanupService : ISingleCleanupService
 {
     private static readonly StringComparer AlbumTypeComparer = StringComparer.OrdinalIgnoreCase;
 
-    private static readonly HashSet<int> ExcludedSecondaryTypeIds = new()
+    /// <summary>
+    /// Releases whose tracks are usually different recordings that share the studio title
+    /// (live, remix, DJ-mix, demo). A title + duration match against them is not evidence
+    /// that the single is redundant, so they are never used as comparison sources.
+    /// Lidarr stores these as secondary types; the primary type is still "Album" or "EP".
+    /// Internal so the eager pre-grab path (EagerSingleUnmonitorService) applies the same rule.
+    /// </summary>
+    internal static readonly HashSet<int> ExcludedSecondaryTypeIds = new()
     {
         SecondaryAlbumType.Live.Id,
         SecondaryAlbumType.Remix.Id,
@@ -1027,8 +1034,9 @@ public class SingleCleanupService : ISingleCleanupService
     /// (live, remix, DJ-mix, demo). A title + duration match against them is not evidence
     /// that the single is redundant, so they are never used as comparison sources.
     /// Lidarr stores these as secondary types; the primary type is still "Album" or "EP".
+    /// Internal so the eager pre-grab path applies the identical exclusion.
     /// </summary>
-    private static bool HasExcludedSecondaryType(Album album)
+    internal static bool HasExcludedSecondaryType(Album album)
     {
         return album.SecondaryTypes != null && album.SecondaryTypes.Any(t => ExcludedSecondaryTypeIds.Contains(t.Id));
     }
