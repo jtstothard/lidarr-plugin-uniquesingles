@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <Compile Include="SingleCleanupServiceTests.cs" />
+    <Compile Include="EagerSingleUnmonitorServiceTests.cs" />
     <Compile Include="ExactAudioCleanupTests.cs" />
     <Compile Include="ExactAudioVerifierTests.cs" />
     <Compile Include="ExactAudioFollowupsTests.cs" />
