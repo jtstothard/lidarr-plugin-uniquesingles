@@ -36,8 +36,11 @@ unmonitored only when:
    import-time/scheduled cleanup paths, whose unmonitor is followed by file deletion), and
 4. **every** catalog track has a Tier-1 (MBID) or Tier-2 (title + duration) match.
 
-Match-tier policy: the eager path accepts Tier-1 **and** Tier-2 evidence (unlike the scan's
-no-file path, which is deliberately Tier-1-only). Tier-2 requires a normalized-title match
+Match-tier policy: the eager path accepts Tier-1 **and** Tier-2 evidence. The scan's and
+album import's no-file path was originally Tier-1-only; since the follow-up fix it applies the
+same Tier-1/Tier-2 rule when this setting is on, because the eager hooks only fire when a single
+is added or its monitoring changes, so singles that existed before their album was downloaded
+were otherwise never re-evaluated. Tier-2 requires a normalized-title match
 plus duration agreement, and the eager action is only ever an unmonitor — reversible, no
 file deletion — so the Tier-2 confidence bar is proportionate. Tier-3 (title-only) never
 unmonitors, matching Tier-3 FlagOnly semantics.
@@ -73,4 +76,4 @@ operation that triggers our synchronous handlers has completed).
 (Connect entry first, then the Metadata entry, then defaults). Existing installs pick up
 the default (on) because Lidarr's settings reader keeps CLR defaults for fields absent from
 the persisted definition. Turning it off restores the pre-#26 behavior completely: no
-eager unmonitors, and all existing import/scan semantics are untouched.
+eager unmonitors, and the import/scan no-file path goes back to exact MBID (Tier-1) matches only.
