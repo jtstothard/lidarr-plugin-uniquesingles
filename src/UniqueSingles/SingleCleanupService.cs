@@ -341,6 +341,36 @@ public class SingleCleanupService : ISingleCleanupService
                 return new CleanupResult(candidatesChecked, cleaned, 0, 0, 0, 0);
             }
 
+            // Same rule as the eager path (#26), applied by the scheduled scan and import-time
+            // cleanup too: a file-less single whose every catalog track has a Tier-1/Tier-2 match
+            // against downloaded comparison tracks is unmonitored (never deleted; there are no
+            // files). Without this, singles that existed before their album was downloaded were
+            // only ever re-checked for exact MBID matches and stayed wanted forever. #17
+            // whole-release protection and Tier-3 semantics are those of CheckSingle: any
+            // unmatched or title-only track keeps the single monitored.
+            if (options.EagerUnmonitorRedundantSingles)
+            {
+                var filelessCheck = TrackMatcher.CheckSingle(singleTracks, albumTracks, options.DurationToleranceMs);
+                if (filelessCheck.IsRedundant)
+                {
+                    _logger.Info(
+                        "UniqueSingles Tier-2 unmonitor: single has no downloaded files and every catalog track is Tier-1/Tier-2 redundant against downloaded comparison tracks. artistId={0} artist='{1}' singleId={2} single='{3}' reason=tier2-matches-no-files",
+                        artist.Id,
+                        artist.Name,
+                        single.Id,
+                        single.Title);
+
+                    if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext, filelessCheck))
+                    {
+                        unmonitorFailures = 1;
+                        return new CleanupResult(candidatesChecked, cleaned, 0, 0, unmonitorFailures, 0);
+                    }
+
+                    cleaned = 1;
+                    return new CleanupResult(candidatesChecked, cleaned, 0, 0, 0, 0);
+                }
+            }
+
             _logger.Info(
                 "UniqueSingles cleanup skip: single has no downloaded track files and is not fully Tier-1 redundant. artistId={0} artist='{1}' singleId={2} single='{3}' reason=no-downloaded-single-tracks-not-tier1",
                 artist.Id,
