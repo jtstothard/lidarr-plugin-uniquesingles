@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>$(PluginTargetFramework)</TargetFramework>
     <RootNamespace>NzbDrone.Core</RootNamespace>
     <AssemblyName>Lidarr.Plugin.$(MSBuildProjectName)</AssemblyName>
     <Nullable>enable</Nullable>
@@ -26,7 +26,7 @@
     <RemoveDir Directories="$(ReleasePackageDir)" />
     <MakeDir Directories="$(ReleasePackageDir)" />
     <Copy SourceFiles="$(TargetPath);$(TargetDir)$(TargetName).pdb" DestinationFolder="$(ReleasePackageDir)" />
-    <ZipDirectory SourceDirectory="$(ReleasePackageDir)" DestinationFile="$(TargetDir)$(TargetName).net8.0.zip" Overwrite="true" />
+    <ZipDirectory SourceDirectory="$(ReleasePackageDir)" DestinationFile="$(TargetDir)$(TargetName).$(TargetFramework).zip" Overwrite="true" />
   </Target>
 
 </Project>

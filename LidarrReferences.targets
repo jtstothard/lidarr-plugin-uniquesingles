@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <LidarrReferenceDir>$(MSBuildThisFileDirectory)_temp/lidarr/3.1.3.4968</LidarrReferenceDir>
+    <LidarrReferenceDir>$(MSBuildThisFileDirectory)_temp/lidarr/$(LidarrAssemblyVersion)</LidarrReferenceDir>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="$(LidarrReferenceDir)/Lidarr.Core.dll;$(LidarrReferenceDir)/Lidarr.Common.dll;$(LidarrReferenceDir)/Lidarr.Http.dll;$(LidarrReferenceDir)/Lidarr.Api.V1.dll;$(LidarrReferenceDir)/NLog.dll;$(LidarrReferenceDir)/FluentValidation.dll;$(LidarrReferenceDir)/Newtonsoft.Json.dll;$(LidarrReferenceDir)/System.IO.Abstractions.dll">
