@@ -34,7 +34,9 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Prepare pinned Lidarr binaries
-        run: python3 scripts/prepare-lidarr.py
+        run: |
+          python3 -m unittest discover -s tests -p 'test_prepare_lidarr.py'
+          python3 scripts/prepare-lidarr.py
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
