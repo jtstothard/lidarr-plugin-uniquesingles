@@ -37,4 +37,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge "$PR_URL" --auto --squash --delete-branch
+          DEPENDENCY_NAMES: ${{ steps.metadata.outputs.dependency-names }}
+        run: |
+          # Third-party actions are SHA-pinned so a human reviews each new release
+          # (pinning policy in dependabot.yml): never auto-merge them. Action names
+          # contain "/" (owner/repo); NuGet package IDs never do.
+          IFS=',' read -ra names <<< "$DEPENDENCY_NAMES"
+          for name in "${names[@]}"; do
+            name="${name// /}"
+            if [[ "$name" == */* && "$name" != actions/* && "$name" != github/* ]]; then
+              echo "Not auto-merging: $name is a third-party action and needs review."
+              exit 0
+            fi
+          done
+          gh pr merge "$PR_URL" --auto --squash --delete-branch
