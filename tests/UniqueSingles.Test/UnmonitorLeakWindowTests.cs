@@ -9,8 +9,9 @@ namespace UniqueSingles.Test;
 /// Leak window in the file-less unmonitor paths: a redundant single must never end up holding
 /// downloaded files that are neither monitored nor cleaned.
 /// (a) A single with a download in flight is not unmonitored while file-less.
-/// (b) Files that land in a release the plugin unmonitored as redundant are cleaned under the
-///     normal cleanup rules instead of being skipped.
+/// (b) Files that land in a release the plugin unmonitored as redundant, from a download grabbed
+///     before (or with) the unmonitor, are cleaned under the normal cleanup rules instead of being
+///     skipped. Files the user fetched later are kept.
 /// (c) Releases unmonitored by the user (no plugin History row) are never touched.
 /// (d) Releases the user re-monitored after the plugin unmonitored them are never touched.
 /// </summary>
@@ -106,7 +107,7 @@ public partial class SingleCleanupServiceTests
         Assert.Empty(albumService.SetMonitoredCalls);
     }
 
-    // ── (b) files landing in a plugin-unmonitored release are cleaned ────────
+    // ── (b) files from a grab that raced the unmonitor are cleaned ──────────
 
     [Fact]
     public void CleanupSingleSelfCheckWithOptions_PluginUnmonitoredSingleReceivesRedundantFiles_DeletesThem()
@@ -126,6 +127,7 @@ public partial class SingleCleanupServiceTests
         var logger = new RecordingLogger();
         var history = new RecordingHistoryRecorder();
         history.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
+        history.PreUnmonitorGrabAlbumIds.Add(single.Id); // race: grabbed before the unmonitor
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, logger, history);
 
         var result = service.CleanupSingleSelfCheckWithOptions(artist, single, AlbumOptions());
@@ -155,6 +157,7 @@ public partial class SingleCleanupServiceTests
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var history = new RecordingHistoryRecorder();
         history.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
+        history.PreUnmonitorGrabAlbumIds.Add(single.Id); // race: grabbed before the unmonitor
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, historyRecorder: history);
 
         var result = service.ScanArtistWithOptions(artist, AlbumOptions());
@@ -179,6 +182,7 @@ public partial class SingleCleanupServiceTests
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var history = new RecordingHistoryRecorder();
         history.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
+        history.PreUnmonitorGrabAlbumIds.Add(single.Id); // race: grabbed before the unmonitor
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, historyRecorder: history);
 
         var result = service.CleanupSingleSelfCheckWithOptions(artist, single, AlbumOptions());
@@ -203,6 +207,7 @@ public partial class SingleCleanupServiceTests
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var history = new RecordingHistoryRecorder();
         history.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
+        history.PreUnmonitorGrabAlbumIds.Add(single.Id); // race: grabbed before the unmonitor
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, historyRecorder: history);
         var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album" }, Tier3Action.AutoClean);
 
