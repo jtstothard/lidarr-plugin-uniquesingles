@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <Compile Include="SingleCleanupServiceTests.cs" />
+    <Compile Include="SingleFolderCleanupTests.cs" />
     <Compile Include="EagerSingleUnmonitorServiceTests.cs" />
     <Compile Include="UnmonitorLeakWindowTests.cs" />
     <Compile Include="LeakBackstopProvenanceTests.cs" />
