@@ -1,4 +1,7 @@
 version: 2
+# Each ecosystem gets one patch/minor group and one major group, so Dependabot
+# opens at most two PRs per ecosystem a week. When a major breaks the build,
+# add an ignore for it instead of leaving the major group red.
 updates:
   - package-ecosystem: nuget
     directory: /
@@ -7,9 +10,16 @@ updates:
       day: monday
     groups:
       nuget-patch-minor:
+        patterns:
+          - "*"
         update-types:
           - patch
           - minor
+      nuget-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
 
   # Action pinning policy: GitHub-owned actions (actions/*, github/*) track their major
   # tag; third-party actions are pinned to a full commit SHA with a version comment,
@@ -23,9 +33,16 @@ updates:
       day: monday
     groups:
       github-actions-patch-minor:
+        patterns:
+          - "*"
         update-types:
           - patch
           - minor
+      github-actions-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
     ignore:
       # codeql.yml deliberately tracks the moving major tag (v4); do not propose pinned bumps (see #18).
       - dependency-name: "github/codeql-action"
