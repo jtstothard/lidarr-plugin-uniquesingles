@@ -12,6 +12,13 @@ on:
 permissions:
   contents: read
 
+# Serialize main-branch runs so releases publish in run order: two quick merges would
+# otherwise race, and the older run finishing last would take "Latest" (#75). Queued
+# main runs wait instead of being cancelled; PR runs cancel superseded pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
@@ -104,6 +111,30 @@ jobs:
           name: plugin-package
           path: release
 
+      # Concurrency orders runs that start together, but a re-run of an older main run
+      # still publishes after newer releases exist. Only claim "Latest" when this build
+      # is at least as new as the current Latest release (#75).
+      - name: Decide whether this build becomes Latest
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # No release yet, or a failed lookup, keeps the previous behaviour (claim Latest).
+          if ! current=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>lookup.err); then
+            echo "::warning::Could not read the current Latest release ($(head -c 300 lookup.err)); marking this build Latest."
+            current=""
+          fi
+          newest=$(printf '%s\n%s\n' "$current" "$PLUGIN_VERSION" | sed '/^$/d' | sort -V | tail -n1)
+          if [ "$newest" = "$PLUGIN_VERSION" ]; then
+            make_latest=true
+          else
+            make_latest=false
+            echo "::warning::$PLUGIN_VERSION is older than the current Latest release $current; publishing without marking it Latest."
+          fi
+          echo "current Latest: ${current:-<none>}; this build: $PLUGIN_VERSION; make_latest=$make_latest"
+          echo "make_latest=$make_latest" >> "$GITHUB_OUTPUT"
+
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v3
         with:
@@ -111,8 +142,8 @@ jobs:
           name: ${{ env.PLUGIN_VERSION }}
           # Publish a real release on main so Lidarr's update check can offer and
           # install it (the draft: true regression behind #25). PR builds never
-          # reach this job. run_number is monotonic, so the newest main build
-          # is always the one GitHub marks as Latest.
+          # reach this job. Latest goes only to a build at least as new as the
+          # current Latest (see the step above), never to a re-run of an old one.
           draft: false
-          make_latest: true
+          make_latest: ${{ steps.latest.outputs.make_latest }}
           files: release/${{ env.PLUGIN_NAME }}.net8.0.zip
