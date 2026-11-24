@@ -5,6 +5,15 @@
     <LidarrRootDir>$(MSBuildThisFileDirectory)</LidarrRootDir>
     <PluginProject>false</PluginProject>
     <PluginProject Condition="$(MSBuildProjectName)!='UniqueSingles.Test'">true</PluginProject>
+
+    <!-- Lidarr installs the release asset named for its own .NET version (net8.0.zip on Lidarr 3.x).
+         Building for another Lidarr: -p:PluginTargetFramework=<tfm> -p:LidarrAssemblyVersion=<version>.
+         A property, not -p:TargetFramework, because NuGet restore ignores a global TargetFramework. -->
+    <PluginTargetFramework Condition="'$(PluginTargetFramework)'==''">net8.0</PluginTargetFramework>
+    <!-- Lidarr version the references come from; LidarrReferences.targets and AssemblySmokeTests read it.
+         Must equal VERSION in scripts/prepare-lidarr.py and the version the smoke tests assert (derived from this
+         property via test-assembly metadata). LidarrReferences.targets fails the build if the references differ. -->
+    <LidarrAssemblyVersion Condition="'$(LidarrAssemblyVersion)'==''">3.1.3.4968</LidarrAssemblyVersion>
   </PropertyGroup>
 
   <PropertyGroup>

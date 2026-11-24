@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <LidarrReferenceDir>$(MSBuildThisFileDirectory)_temp/lidarr/3.1.3.4968</LidarrReferenceDir>
+    <LidarrReferenceDir>$(MSBuildThisFileDirectory)_temp/lidarr/$(LidarrAssemblyVersion)</LidarrReferenceDir>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="$(LidarrReferenceDir)/Lidarr.Core.dll;$(LidarrReferenceDir)/Lidarr.Common.dll;$(LidarrReferenceDir)/Lidarr.Http.dll;$(LidarrReferenceDir)/Lidarr.Api.V1.dll;$(LidarrReferenceDir)/NLog.dll;$(LidarrReferenceDir)/FluentValidation.dll;$(LidarrReferenceDir)/Newtonsoft.Json.dll;$(LidarrReferenceDir)/System.IO.Abstractions.dll">
@@ -9,6 +9,14 @@
     </Reference>
   </ItemGroup>
   <Target Name="RequireLidarrReferences" BeforeTargets="ResolveAssemblyReferences">
-    <Error Condition="!Exists('$(LidarrReferenceDir)/Lidarr.Core.dll')" Text="Run python3 scripts/prepare-lidarr.py before building." />
+    <ItemGroup>
+      <LidarrGuardedAssembly Include="$(LidarrReferenceDir)/Lidarr.Core.dll;$(LidarrReferenceDir)/Lidarr.Common.dll;$(LidarrReferenceDir)/Lidarr.Http.dll;$(LidarrReferenceDir)/Lidarr.Api.V1.dll" />
+    </ItemGroup>
+    <Error Condition="!Exists('%(LidarrGuardedAssembly.FullPath)')" Text="Missing %(LidarrGuardedAssembly.FullPath). Run python3 scripts/prepare-lidarr.py before building." />
+    <!-- Plugins built against the wrong Lidarr assembly version crash at load time, so check the real AssemblyVersion, not just the path. -->
+    <GetAssemblyIdentity AssemblyFiles="@(LidarrGuardedAssembly)">
+      <Output TaskParameter="Assemblies" ItemName="LidarrGuardedIdentity" />
+    </GetAssemblyIdentity>
+    <Error Condition="'%(LidarrGuardedIdentity.Version)' != '$(LidarrAssemblyVersion)'" Text="Lidarr assembly version mismatch: %(LidarrGuardedIdentity.Identity) is %(LidarrGuardedIdentity.Version) but this plugin requires $(LidarrAssemblyVersion) (the LidarrAssemblyVersion property in Directory.Build.props, or -p:LidarrAssemblyVersion). Re-run python3 scripts/prepare-lidarr.py to download the matching references, or change LidarrAssemblyVersion in Directory.Build.props and VERSION in scripts/prepare-lidarr.py together." />
   </Target>
 </Project>

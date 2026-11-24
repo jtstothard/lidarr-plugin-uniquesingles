@@ -1,3 +1,4 @@
+using System.Reflection;
 using NzbDrone.Core.Messaging.Commands;
 using NzbDrone.Core.Plugins;
 using Xunit;
@@ -10,7 +11,11 @@ namespace UniqueSingles.Test;
 /// </summary>
 public class AssemblySmokeTests
 {
-    private static readonly Version SupportedLidarrVersion = new(3, 1, 3, 4968);
+    // LidarrAssemblyVersion from Directory.Build.props, carried as test-assembly metadata
+    // (see UniqueSingles.Test.csproj), so a build against another Lidarr checks that version.
+    private static readonly Version SupportedLidarrVersion = Version.Parse(
+        typeof(AssemblySmokeTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .Single(attribute => attribute.Key == "LidarrAssemblyVersion").Value!);
 
     [Fact]
     public void Assembly_ContainsCommandSubclass()
@@ -78,6 +83,21 @@ public class AssemblySmokeTests
         Assert.Equal(SupportedLidarrVersion, references["Lidarr.Core"]);
         Assert.Equal(SupportedLidarrVersion, references["Lidarr.Common"]);
         Assert.DoesNotContain(references.Values, version => version?.Major == 10);
+    }
+
+    [Theory]
+    [InlineData("Lidarr.Core")]
+    [InlineData("Lidarr.Common")]
+    [InlineData("Lidarr.Http")]
+    [InlineData("Lidarr.Api.V1")]
+    public void LoadedLidarrAssemblies_AreSupportedVersion(string assemblyName)
+    {
+        // The plugin only compiles against Core and Common, but Http and Api.V1 are also
+        // referenced by the build; all four must be the pinned release (see
+        // LidarrReferences.targets, which enforces the same at build time).
+        var loaded = System.Reflection.Assembly.Load(new System.Reflection.AssemblyName(assemblyName));
+
+        Assert.Equal(SupportedLidarrVersion, loaded.GetName().Version);
     }
 
     [Fact]

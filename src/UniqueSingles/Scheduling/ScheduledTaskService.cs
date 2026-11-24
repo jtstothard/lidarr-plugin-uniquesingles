@@ -40,6 +40,13 @@ namespace NzbDrone.Core.Plugins.Scheduling
         /// </summary>
         private Dictionary<string, ScheduledTask> _capturedTasks = new();
 
+        /// <summary>
+        /// True when <see cref="CaptureExistingTasks"/> ran but could not read the ScheduledTask
+        /// table. The previous run time is then unknown, so registration must not treat a missing
+        /// row as "never ran" (which would schedule a destructive scan as overdue on every restart).
+        /// </summary>
+        private bool _captureFailed;
+
         public ScheduledTaskService(
             IMetadataFactory metadataFactory,
             IScheduledTaskRepository scheduledTaskRepository,
@@ -139,10 +146,18 @@ namespace NzbDrone.Core.Plugins.Scheduling
                 _capturedTasks = _scheduledTaskRepository.All()
                     .GroupBy(t => t.TypeName)
                     .ToDictionary(g => g.Key, g => g.First());
+                _captureFailed = false;
             }
             catch (Exception ex)
             {
-                _logger.Warn(ex, "Failed to capture existing scheduled tasks");
+                // Fail closed: without the captured run times a restart cannot tell "never ran"
+                // from "ran recently", so RegisterTask will wait one full interval instead of
+                // seeding an overdue schedule.
+                _capturedTasks = new Dictionary<string, ScheduledTask>();
+                _captureFailed = true;
+                _logger.Error(
+                    ex,
+                    "Failed to capture existing scheduled tasks; previous run times are unknown, so newly registered plugin tasks will wait one full interval before their first run instead of running immediately");
             }
         }
 
@@ -180,7 +195,19 @@ namespace NzbDrone.Core.Plugins.Scheduling
                 // Row was removed by TaskManager during startup; keep the previous run time.
                 task.LastExecution = captured.LastExecution;
                 task.LastStartTime = captured.LastStartTime == default ? captured.LastExecution : captured.LastStartTime;
-                _capturedTasks.Remove(typeName);
+            }
+            else if (_captureFailed)
+            {
+                // The saved run time could not be read at startup. Treating that as "never ran"
+                // would schedule a full destructive scan as overdue on every restart (the
+                // restart-scan bug), so start the interval now instead.
+                var now = DateTime.UtcNow;
+                task.LastExecution = now;
+                task.LastStartTime = now;
+                _logger.Warn(
+                    "Scheduled task state could not be captured at startup; registering {0} as if it just ran so the first scan waits one full interval ({1} min)",
+                    typeName,
+                    provider.IntervalMinutes);
             }
             else
             {
@@ -190,6 +217,10 @@ namespace NzbDrone.Core.Plugins.Scheduling
             }
 
             _scheduledTaskRepository.Insert(task);
+
+            // Consume the captured run time only after it is persisted, so a failed insert
+            // can be retried without losing it.
+            _capturedTasks.Remove(typeName);
             _cache.Set(typeName, task);
             _registeredCommandTypes.Add(typeName);
             _logger.Info(
@@ -250,7 +281,18 @@ namespace NzbDrone.Core.Plugins.Scheduling
 
             foreach (var typeName in orphaned)
             {
-                var task = FindScheduledTask(typeName);
+                ScheduledTask? task;
+                try
+                {
+                    task = FindScheduledTask(typeName);
+                }
+                catch (Exception)
+                {
+                    // Already logged. Still drop the cache entry below so the Scheduler stops
+                    // running a disabled task even though its row could not be removed now.
+                    task = null;
+                }
+
                 if (task != null)
                 {
                     _scheduledTaskRepository.Delete(task.Id);
@@ -273,8 +315,10 @@ namespace NzbDrone.Core.Plugins.Scheduling
             }
             catch (Exception ex)
             {
-                _logger.Warn(ex, "Failed to query scheduled tasks for {0}", typeName);
-                return null;
+                // Do not return null: callers read that as "no row" and would insert a duplicate,
+                // which makes Lidarr's TaskManager throw on SingleOrDefault.
+                _logger.Error(ex, "Failed to query scheduled tasks for {0}", typeName);
+                throw;
             }
         }
     }

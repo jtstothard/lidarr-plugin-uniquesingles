@@ -16,8 +16,9 @@ namespace NzbDrone.Core.Plugins;
 /// cleanup path uses (TrackMatcher.CheckSingle over every catalog track, compared against
 /// downloaded tracks on monitored releases of the configured comparison types) at the
 /// lifecycle points where a single becomes grabbable — metadata refresh, album add, album
-/// refresh, and monitoring edits — so a fully redundant single is unmonitored before RSS or
-/// a search can grab it, instead of being downloaded first and cleaned up on import.
+/// refresh, and monitoring edits — so a fully redundant single is normally unmonitored before
+/// RSS or a search grabs it, instead of being downloaded first and cleaned up on import.
+/// This is best effort, not a guarantee that no grab can follow: see docs/eager-unmonitor.md.
 ///
 /// This service is deliberately narrower than the cleanup path in two ways:
 /// - It only ever unmonitors; it never deletes files.
@@ -33,11 +34,31 @@ namespace NzbDrone.Core.Plugins;
 ///
 /// Lidarr's plugin assembly registration exposes every public class implementing
 /// IHandle&lt;TEvent&gt; to the EventAggregator, so these handlers run synchronously inside
-/// the album lifecycle operations — strictly before any queued refresh/search command can
-/// execute against the new monitoring state. A grab-time hook (NotificationBase.OnGrab) is
-/// deliberately NOT used: notifications fire after Lidarr has already sent the download to
-/// the client, and unmonitoring there would leak the in-flight file, because the import-time
-/// cleanup skips already-unmonitored releases.
+/// the album lifecycle operations. That does not make the unmonitor authoritative: the events
+/// carry Lidarr's in-memory album instances, Lidarr's own post-refresh code (AlbumAddedService)
+/// can queue searches from those instances' monitored flags, searches do not re-check the
+/// monitored flag, and AlbumMonitoredService can re-monitor file-less albums on artist add
+/// without publishing an event. A grab can therefore still happen. What is promised is
+/// conditional, not absolute: when the import-time cleanup (Connect entry) or the scheduled
+/// scan (off by default) is enabled, files that arrive for a redundant single are cleaned if
+/// the single was left monitored because a download was in flight, or if the files came from
+/// an automatic grab (whenever it ran) or a user grab that predates the plugin's unmonitor.
+/// Files stay when a delete fails, when the cleanup rules or the History provenance lookup do
+/// not clear them, when the single is monitored again, and when the user fetched the release
+/// through interactive search or a Search they started after the unmonitor (that is the user's
+/// own download, not a leak). See the two guards below and docs/eager-unmonitor.md.
+/// A grab-time hook (NotificationBase.OnGrab) is deliberately NOT used: notifications fire
+/// after Lidarr has already sent the download to the client, and unmonitoring there would
+/// race the in-flight download.
+///
+/// Two further guards keep the unmonitor from leaking files:
+/// - A single with a download in the download client's queue or in Lidarr's tracked downloads
+///   (IInFlightReleaseProbe, a read-only view of those and of recent grab history) stays monitored; the
+///   import-time self-check cleans it once the files land.
+/// - A single the user re-monitored after the plugin unmonitored it is not unmonitored again
+///   while that holds. The explicit re-monitor (an AlbumEditedEvent from the UI/API monitoring
+///   toggle) is recorded as a UserRemonitor History row, which the cleanup paths also honour;
+///   a monitored single whose latest plugin row is still Unmonitor is protected the same way.
 /// </summary>
 public interface IEagerSingleUnmonitorService
 {
@@ -62,6 +83,7 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
     private readonly ITrackService _trackService;
     private readonly IArtistService _artistService;
     private readonly ICleanupHistoryRecorder _historyRecorder;
+    private readonly IInFlightReleaseProbe _inFlightProbe;
     private readonly Lazy<INotificationFactory> _notificationFactory;
     private readonly Lazy<IMetadataFactory> _metadataFactory;
     private readonly Logger _logger;
@@ -75,6 +97,7 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
         ITrackService trackService,
         IArtistService artistService,
         ICleanupHistoryRecorder historyRecorder,
+        IInFlightReleaseProbe inFlightProbe,
         Lazy<INotificationFactory> notificationFactory,
         Lazy<IMetadataFactory> metadataFactory,
         Logger logger)
@@ -83,6 +106,7 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
         _trackService = trackService ?? throw new ArgumentNullException(nameof(trackService));
         _artistService = artistService ?? throw new ArgumentNullException(nameof(artistService));
         _historyRecorder = historyRecorder ?? throw new ArgumentNullException(nameof(historyRecorder));
+        _inFlightProbe = inFlightProbe ?? throw new ArgumentNullException(nameof(inFlightProbe));
         _notificationFactory = notificationFactory ?? throw new ArgumentNullException(nameof(notificationFactory));
         _metadataFactory = metadataFactory ?? throw new ArgumentNullException(nameof(metadataFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -91,8 +115,9 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
     /// <summary>
     /// Metadata refresh path — the production churn scenario from #26: switching a metadata
     /// profile to include Singles makes newly fetched singles appear as Added children with
-    /// monitored state already assigned, after tracks were inserted by the album refresh and
-    /// before any search or RSS pass can act on them.
+    /// monitored state already assigned, after tracks were inserted by the album refresh. The
+    /// event carries the refresh's in-memory instances, so unmonitoring here does not
+    /// guarantee that Lidarr's own post-refresh search skips the single (see class summary).
     /// </summary>
     public void Handle(AlbumInfoRefreshedEvent message)
     {
@@ -133,9 +158,66 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
     /// (or the user) already unmonitored is skipped by the monitored gate. The unmonitor this
     /// service performs publishes AlbumEditedEvent with the persisted unmonitored state, so
     /// the re-entrant dispatch terminates immediately.
+    ///
+    /// An explicit re-monitor of a single the plugin unmonitored is the user taking it back: it
+    /// is recorded as a UserRemonitor History row, which keeps the plugin from unmonitoring it or
+    /// deleting its files while the row stands. Lidarr's own bulk
+    /// monitoring writes (AlbumMonitoredService on artist add) use UpdateMany, publish no
+    /// AlbumEditedEvent, and so are not mistaken for the user.
     /// </summary>
     public void Handle(AlbumEditedEvent message)
     {
+        try
+        {
+            if (IsExplicitRemonitor(message))
+            {
+                var album = message!.Album;
+                var provenance = _historyRecorder.GetProvenance(album.Id);
+                if (provenance == UnmonitorProvenance.PluginUnmonitored)
+                {
+                    // The row is keyed by album, so it is written even when the artist cannot be
+                    // resolved. A monitored single whose latest plugin row is still an Unmonitor
+                    // is protected anyway (ProtectsRelease); the row keeps it protected after a
+                    // later unmonitor by the user.
+                    var artist = ResolveArtist(album);
+                    if (artist == null)
+                    {
+                        _logger.Warn(
+                            "UniqueSingles eager: user re-monitored a single the plugin unmonitored, but its artist could not be resolved; recording the re-monitor by album and protecting the single. albumId={0} single='{1}' reason=remonitor-artist-unresolved",
+                            album.Id,
+                            album.Title);
+                    }
+
+                    if (_historyRecorder.RecordUserRemonitor(artist, album))
+                    {
+                        _logger.Info(
+                            "UniqueSingles eager: user re-monitored a single the plugin unmonitored; the plugin leaves it alone while this row stands. artistId={0} artist='{1}' singleId={2} single='{3}' reason=user-remonitored",
+                            artist?.Id,
+                            artist?.Name,
+                            album.Id,
+                            album.Title);
+                    }
+                    else
+                    {
+                        _logger.Warn(
+                            "UniqueSingles eager: user re-monitored a single the plugin unmonitored, but the UserRemonitor History row could not be written; it stays protected while it is monitored, but unmonitoring it again would let the plugin treat it as its own unmonitor. albumId={0} single='{1}' reason=remonitor-record-failed",
+                            album.Id,
+                            album.Title);
+                    }
+
+                    return;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn(
+                ex,
+                "UniqueSingles eager re-monitor check swallowed exception. albumId={0} reason=remonitor-check-failed",
+                message?.Album?.Id);
+            return;
+        }
+
         Evaluate(ResolveArtist(message?.Album), message?.Album, "album-edited");
     }
 
@@ -157,6 +239,22 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
 
         if (!IsSingle(single) || !single.Monitored)
         {
+            return false;
+        }
+
+        if (SingleCleanupService.IsProtectedCandidate(single))
+        {
+            // Mirror of the source-side exclusion: a Live/Remix/DJ-mix/Demo single (or one whose
+            // secondary types are unreadable) is a distinct version, never a duplicate, so it
+            // is never unmonitored on any evidence tier.
+            _logger.Info(
+                "UniqueSingles eager keep: single carries a secondary type that marks a distinct version, or its secondary types are unknown. artistId={0} artist='{1}' singleId={2} single='{3}' secondaryTypes='{4}' reason={5}",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title,
+                SingleCleanupService.DescribeSecondaryTypes(single),
+                single.SecondaryTypes == null ? "candidate-secondary-types-unknown" : "candidate-excluded-secondary-type");
             return false;
         }
 
@@ -192,8 +290,8 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
         if (singleTracks.Any(t => t.HasFile))
         {
             // Releases with downloaded content stay owned by the import-time and scheduled
-            // cleanup paths, whose unmonitor is followed by file deletion. Unmonitoring here
-            // would leak those files, because cleanup skips already-unmonitored releases.
+            // cleanup paths, whose unmonitor is followed by file deletion under the full
+            // cleanup rules (exact-audio, Tier-3 action). This path never deletes.
             _logger.Info(
                 "UniqueSingles eager skip: single has downloaded content; cleanup path owns it. artistId={0} artist='{1}' singleId={2} single='{3}' reason=has-downloaded-content",
                 artist.Id,
@@ -203,8 +301,8 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
             return false;
         }
 
-        var comparisonTracks = GetDownloadedComparisonTracks(artist, single, options);
-        var check = TrackMatcher.CheckSingle(singleTracks, comparisonTracks, options.DurationToleranceMs);
+        var (comparisonTracks, tier1OnlyTracks) = GetDownloadedComparisonTracks(artist, single, options);
+        var check = TrackMatcher.CheckSingle(singleTracks, comparisonTracks, tier1OnlyTracks, options.DurationToleranceMs);
 
         if (!check.IsRedundant)
         {
@@ -223,6 +321,66 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
             return false;
         }
 
+        // The single is monitored here, so a standing plugin Unmonitor row means the user
+        // re-monitored it and its UserRemonitor row is missing; it is protected the same way.
+        var provenance = _historyRecorder.GetProvenance(single.Id);
+        if (provenance.ProtectsRelease(single.Monitored))
+        {
+            _logger.Info(
+                "UniqueSingles eager keep: user re-monitored this single after the plugin unmonitored it. artistId={0} artist='{1}' singleId={2} single='{3}' provenance={4} reason=user-remonitored",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title,
+                provenance);
+            return false;
+        }
+
+        if (_inFlightProbe.IsInFlight(single, out var inFlightDetail))
+        {
+            // Unmonitoring now would land the download in an unmonitored release. Staying
+            // monitored lets the import-time self-check clean the files as usual.
+            _logger.Info(
+                "UniqueSingles eager keep: single has a download Lidarr can still import. artistId={0} artist='{1}' singleId={2} single='{3}' trigger={4} download='{5}' reason=download-in-flight",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title,
+                trigger,
+                inFlightDetail);
+            return false;
+        }
+
+        // The History row is written before the unmonitor: it is what lets the leak backstop
+        // clean a download that lands after it, so a single whose row cannot be written stays
+        // monitored (the next lifecycle event or scan retries).
+        bool recorded;
+        try
+        {
+            recorded = _historyRecorder.RecordUnmonitor(artist, single, $"Eager pre-grab unmonitor (trigger={trigger}): {check.SummaryReason}");
+        }
+        catch (Exception historyEx)
+        {
+            _logger.Warn(
+                historyEx,
+                "UniqueSingles history: action=unmonitor-record-failed artistId={0} albumId={1} reason=history-recorder-threw",
+                artist.Id,
+                single.Id);
+            recorded = false;
+        }
+
+        if (!recorded)
+        {
+            _logger.Warn(
+                "UniqueSingles eager keep: the History row could not be written, and without it a download landing later could not be cleaned; single stays monitored. artistId={0} artist='{1}' singleId={2} single='{3}' trigger={4} reason=unmonitor-history-write-failed",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title,
+                trigger);
+            return false;
+        }
+
         try
         {
             _albumService.SetAlbumMonitored(single.Id, false);
@@ -237,32 +395,31 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
                 single.Id,
                 single.Title,
                 trigger);
+            try
+            {
+                _historyRecorder.RecordUnmonitorReverted(artist, single);
+            }
+            catch (Exception revertEx)
+            {
+                _logger.Warn(
+                    revertEx,
+                    "UniqueSingles history: action=unmonitor-reverted-record-failed artistId={0} albumId={1} reason=history-recorder-threw",
+                    artist.Id,
+                    single.Id);
+            }
+
             return false;
         }
 
         single.Monitored = false;
         _logger.Info(
-            "UniqueSingles eager unmonitor success: single unmonitored before any grab. artistId={0} artist='{1}' singleId={2} single='{3}' trigger={4} reason='{5}'",
+            "UniqueSingles eager unmonitor success: single unmonitored (no downloaded files). artistId={0} artist='{1}' singleId={2} single='{3}' trigger={4} reason='{5}'",
             artist.Id,
             artist.Name,
             single.Id,
             single.Title,
             trigger,
             check.SummaryReason);
-
-        // Lidarr History audit row; recorder failures never affect the decision.
-        try
-        {
-            _historyRecorder.RecordUnmonitor(artist, single, $"Eager pre-grab unmonitor (trigger={trigger}): {check.SummaryReason}");
-        }
-        catch (Exception historyEx)
-        {
-            _logger.Warn(
-                historyEx,
-                "UniqueSingles history: action=unmonitor-record-failed artistId={0} albumId={1} reason=history-recorder-threw",
-                artist.Id,
-                single.Id);
-        }
 
         return true;
     }
@@ -298,11 +455,12 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
     /// <summary>
     /// Mirrors SingleCleanupService.GetComparisonTracksByAlbum selection exactly: monitored
     /// releases of the configured comparison types (Album/EP by default), excluding Live,
-    /// Remix, DJ-mix and Demo secondary types, contributing only downloaded tracks, and never
+    /// Remix, DJ-mix, Demo and unknown secondary types, routing releases with any other
+    /// secondary type into the Tier-1-only pool, contributing only downloaded tracks, and never
     /// the candidate itself (possible when "Single" is a configured comparison type — a
     /// file-less single contributes no downloaded tracks either way).
     /// </summary>
-    private List<Track> GetDownloadedComparisonTracks(Artist artist, Album single, SingleCleanupOptions options)
+    private (List<Track> Standard, List<Track> Tier1Only) GetDownloadedComparisonTracks(Artist artist, Album single, SingleCleanupOptions options)
     {
         List<Album> albums;
         try
@@ -316,10 +474,11 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
                 "UniqueSingles eager lookup failure: failed to load artist albums. artistId={0} artist='{1}' reason=album-lookup-failed",
                 artist.Id,
                 artist.Name);
-            return new List<Track>();
+            return (new List<Track>(), new List<Track>());
         }
 
         var comparisonTracks = new List<Track>();
+        var tier1OnlyTracks = new List<Track>();
         foreach (var album in albums)
         {
             if (album == null || album.Id == single.Id)
@@ -332,20 +491,24 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
                 continue;
             }
 
-            if (SingleCleanupService.HasExcludedSecondaryType(album))
+            var secondaryClass = SingleCleanupService.ClassifySecondaryTypes(album);
+            if (secondaryClass == SingleCleanupService.SecondaryTypeClass.Excluded
+                || secondaryClass == SingleCleanupService.SecondaryTypeClass.Unknown)
             {
                 _logger.Debug(
-                    "UniqueSingles eager comparison skip: album has an excluded secondary type. albumId={0} album='{1}' secondaryTypes='{2}' reason=excluded-secondary-type",
+                    "UniqueSingles eager comparison skip: album is not a reliable comparison source. albumId={0} album='{1}' secondaryTypes='{2}' reason={3}",
                     album.Id,
                     album.Title,
-                    string.Join(",", album.SecondaryTypes.Select(t => t.Name)));
+                    SingleCleanupService.DescribeSecondaryTypes(album),
+                    secondaryClass == SingleCleanupService.SecondaryTypeClass.Excluded ? "excluded-secondary-type" : "secondary-types-unknown");
                 continue;
             }
 
             try
             {
                 var albumTracks = _trackService.GetTracksByAlbum(album.Id) ?? new List<Track>();
-                comparisonTracks.AddRange(albumTracks.Where(t => t.HasFile));
+                (secondaryClass == SingleCleanupService.SecondaryTypeClass.Tier1Only ? tier1OnlyTracks : comparisonTracks)
+                    .AddRange(albumTracks.Where(t => t.HasFile));
             }
             catch (Exception ex)
             {
@@ -358,7 +521,7 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
             }
         }
 
-        return comparisonTracks;
+        return (comparisonTracks, tier1OnlyTracks);
     }
 
     /// <summary>
@@ -448,6 +611,23 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
                 album.Title);
             return null;
         }
+    }
+
+    /// <summary>
+    /// SetAlbumMonitored/SetMonitored publish the edited album as both Album and OldAlbum, and
+    /// only the monitoring toggle calls them; UpdateAlbum passes the stored album as OldAlbum,
+    /// so a re-monitor there is a false → true transition.
+    /// </summary>
+    private static bool IsExplicitRemonitor(AlbumEditedEvent? message)
+    {
+        var album = message?.Album;
+        if (album == null || !IsSingle(album) || !album.Monitored)
+        {
+            return false;
+        }
+
+        var old = message!.OldAlbum;
+        return ReferenceEquals(old, album) || (old != null && !old.Monitored);
     }
 
     private static bool IsSingle(Album album)

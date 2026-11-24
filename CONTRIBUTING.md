@@ -4,8 +4,11 @@ Thanks for considering a contribution to Unique Singles.
 
 ## Getting Started
 
-Builds reference the official Lidarr 3.1.3.4968 binaries. Lidarr source submodules
-are retained for reference, but are not required for building or testing.
+Builds reference the official Lidarr 3.1.3.4968 binaries; no Lidarr source checkout
+or submodule is needed for building or testing. When citing or checking Lidarr
+internals (events, services, deletion flow), use the upstream source at
+[github.com/Lidarr/Lidarr@v3.1.3.4968](https://github.com/Lidarr/Lidarr/tree/v3.1.3.4968) —
+it matches the pinned binaries exactly.
 Build hosts need Python 3.11+ and the .NET 8 SDK (CI uses 8.0.405). The preparation
 script supports Linux, macOS, and Windows on x64, and Linux/macOS on arm64.
 
@@ -41,8 +44,11 @@ compile ImageSharp or run its license-key build target. This does not update
 Lidarr or its runtime dependencies on users' systems.
 
 When changing the supported Lidarr release, update the version/digests in
-`scripts/prepare-lidarr.py`, the path in `LidarrReferences.targets`, and the
-assembly-version guard in `AssemblySmokeTests.cs`. Verify the required plugin
+`scripts/prepare-lidarr.py` and `LidarrAssemblyVersion` in `Directory.Build.props`;
+`LidarrReferences.targets` and the assembly-version guard in `AssemblySmokeTests.cs`
+read that property. `PluginTargetFramework` (default `net8.0`) sets the framework
+and the release ZIP name, because Lidarr installs the asset named for its own .NET
+version. Verify the required plugin
 APIs and the full suite against the actual downloaded binaries. NuGet audit
 checks cover restored packages; they do not inventory the binaries in the
 downloaded Lidarr archive.

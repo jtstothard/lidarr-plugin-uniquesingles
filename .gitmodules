@@ -1,6 +1,0 @@
-[submodule "Submodules/Lidarr"]
-	path = Submodules/Lidarr
-	url = https://github.com/Lidarr/Lidarr.git
-[submodule "ext/Lidarr"]
-	path = ext/Lidarr
-	url = https://github.com/Lidarr/Lidarr.git
