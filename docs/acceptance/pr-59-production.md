@@ -8,16 +8,22 @@ settings were changed.
 
 ## Trusted source and runtime
 
-- Main push CI run 141 (`44935043528`) passed; GitHub release **1.0.2.128** (published,
-  Latest, tag → `1ecc675`) was downloaded with authenticated GitHub CLI. No local build
-  was deployed.
+- Main push [**Build Plugin** run 44935043513](https://github.com/jtstothard/lidarr-plugin-uniquesingles/actions/runs/44935043513),
+  run number 128 (event `push`, head `1ecc675`), passed; its run number is what makes
+  the version 1.0.2.128. GitHub release **1.0.2.128** (published, tag → `1ecc675`) was
+  downloaded with authenticated GitHub CLI. No local build was deployed.
+- *Correction (2026-11-24):* this receipt originally cited "Main push CI run 141
+  (`44935043528`)" as the trusted source. That is the **CodeQL** workflow run for the
+  same commit (CodeQL has its own run counter), not the build that produced the
+  release. The Build Plugin run above is the build provenance.
 - Release ZIP SHA-256 `00d3955f974e3f25003ae11278486d855988487089fabf179902f2deba7e68e1`
   (matches the GitHub asset digest).
 - Deployed DLL SHA-256 `c4519d63bb4b796bb7f883ac84e28bfafd820be72263f47234cff81610820151`
   (132,608 bytes); PDB `b994fb8cb606575310a6424a993ac87df876063808532c6062161b4d13988a84`
   (36,288 bytes). Both byte-match the ZIP members.
 - Runtime: LinuxServer Lidarr **4.0.0.5227** on .NET **10.0.15**, account 99:100. CI still
-  references Lidarr 3.1.3.4968 / .NET 8; the previous build (1.0.2.125) already ran its
+  references Lidarr 3.1.3.4968 / .NET 8; the previous build (1.0.2.125, receipt backfilled
+  in [build-125-production.md](build-125-production.md)) already ran its
   scheduled scan on this runtime on 2026-11-21, and #59 uses no new Lidarr APIs.
 - Plugin path `/srv/docker-state/stacks/media/lidarr/plugins/jtstothard/lidarr-plugin-uniquesingles/`;
   files installed by same-directory atomic rename, 99:100, modes 664/644 preserved.
