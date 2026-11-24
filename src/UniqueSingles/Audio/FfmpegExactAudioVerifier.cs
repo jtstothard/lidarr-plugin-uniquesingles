@@ -174,6 +174,18 @@ public sealed class FfmpegExactAudioVerifier : IExactAudioVerifier
         CacheOrder.Enqueue(key);
     }
 
+    /// <summary>
+    /// Registers <paramref name="kill"/> to run when <paramref name="token"/> is cancelled. No exception may escape the
+    /// callback: when the 30-second decode deadline (CancelAfter) fires, the callback runs on a thread-pool timer thread
+    /// and an escaping exception (e.g. Win32Exception from a failed process-tree kill) would be unhandled and abort the host.
+    /// </summary>
+    internal static CancellationTokenRegistration RegisterKillOnCancel(CancellationToken token, Action kill)
+        => token.Register(() =>
+        {
+            try { kill(); }
+            catch (Exception ex) { Debug.WriteLine($"Decoder kill failed: {ex.GetType().Name}"); }
+        });
+
     private async Task<DecodedAudio> Decode(string path, string executable, CancellationToken token)
     {
         if (!string.Equals(Path.GetExtension(path), ".flac", StringComparison.OrdinalIgnoreCase))
@@ -202,7 +214,7 @@ public sealed class FfmpegExactAudioVerifier : IExactAudioVerifier
             "-f", "flac", "-i", "pipe:0", "-map", "0:a:0", "-af", "ashowinfo", "-vn", "-sn", "-dn", "-threads", "1", "-c:a", bits == 16 ? "pcm_s16le" : "pcm_s24le",
             "-f", bits == 16 ? "s16le" : "s24le", "pipe:1" }) start.ArgumentList.Add(arg);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Decoder unavailable");
-        using var terminate = token.Register(() => { try { process.Kill(true); } catch (InvalidOperationException) { } });
+        using var terminate = RegisterKillOnCancel(token, () => process.Kill(true));
         var writer = Task.Run(async () =>
         {
             try { await process.StandardInput.BaseStream.WriteAsync(input, token); }
