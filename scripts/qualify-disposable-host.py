@@ -19,19 +19,30 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location('prepare', ROOT / 'scripts/prepare-lidarr.py')
 prepare = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(prepare)
-RID = {'Darwin': 'osx', 'Linux': 'linux'}[platform.system()] + '-core-' + {'arm64': 'arm64', 'aarch64': 'arm64', 'x86_64': 'x64'}[platform.machine()]
-ARCHIVE = ROOT / '_temp/lidarr' / f'Lidarr.develop.{prepare.VERSION}.{RID}.tar.gz'
+WINDOWS = platform.system() == 'Windows'
+RID = {'Darwin': 'osx', 'Linux': 'linux', 'Windows': 'windows'}[platform.system()] + '-core-' + {'arm64': 'arm64', 'aarch64': 'arm64', 'x86_64': 'x64', 'AMD64': 'x64'}[platform.machine()]
+ARCHIVE = ROOT / '_temp/lidarr' / f'Lidarr.develop.{prepare.VERSION}.{RID}{".zip" if WINDOWS else ".tar.gz"}'
 prepare.verify_archive(ARCHIVE, prepare.SHA256[RID])
 RUN = ROOT / '_temp' / ('issue49-' + uuid.uuid4().hex)
 RUN.mkdir()
-with tarfile.open(ARCHIVE) as archive:
-    archive.extractall(RUN / 'host', filter='data')
-HOST = RUN / 'host/Lidarr/Lidarr'
+if WINDOWS:
+    with zipfile.ZipFile(ARCHIVE) as archive:
+        for member in archive.namelist():
+            # Same containment rule as tarfile's 'data' filter: no absolute or parent-escaping members.
+            target = (RUN / 'host' / member).resolve()
+            assert target.is_relative_to((RUN / 'host').resolve()), member
+        archive.extractall(RUN / 'host')
+else:
+    with tarfile.open(ARCHIVE) as archive:
+        archive.extractall(RUN / 'host', filter='data')
+# On Windows, Lidarr.exe is the tray app; the console host writes the log to stdout.
+HOST = RUN / ('host/Lidarr/Lidarr.Console.exe' if WINDOWS else 'host/Lidarr/Lidarr')
 if platform.system() == 'Darwin':
     subprocess.run(['codesign', '--force', '--sign', '-', str(HOST)], check=True)
 DATA = RUN / 'data'
@@ -53,6 +64,9 @@ decoder = shutil.which('ffmpeg')
 if decoder:
     results['decoder'] = {'path': str(Path(decoder).resolve()), 'sha256': hashlib.sha256(Path(decoder).read_bytes()).hexdigest(), 'version': subprocess.check_output([decoder, '-version'], text=True).splitlines()[0]}
 results['platform'] = platform.platform()
+# Windows has no SIGTERM: stop() asks the host to shut down through its API (graceful, like
+# SIGTERM on POSIX) and only falls back to TerminateProcess if it does not exit in time.
+results['stopMethod'] = 'api-shutdown' if WINDOWS else 'sigterm'
 
 def api(path, body=None, method=None):
     request = urllib.request.Request(f'http://127.0.0.1:{PORT}/api/v1/{path}', data=None if body is None else json.dumps(body).encode(), headers={'X-Api-Key': KEY, 'Content-Type': 'application/json'}, method=method)
@@ -81,8 +95,20 @@ def start():
 def stop():
     global process
     if process is not None:
-        process.terminate()
-        process.wait(timeout=30)
+        if WINDOWS:
+            try:
+                api('system/shutdown', {}, 'POST')
+            except (OSError, RuntimeError):
+                pass  # the host may drop the connection while it shuts down
+            try:
+                process.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                results['forcedStops'] = results.get('forcedStops', 0) + 1
+                process.kill()
+                process.wait(timeout=30)
+        else:
+            process.terminate()
+            process.wait(timeout=30)
         process = None
     for output in logs:
         output.flush()
@@ -308,11 +334,19 @@ try:
         db.execute(f'DELETE FROM AlbumReleases WHERE AlbumId={album_id}')
         db.execute(f'DELETE FROM Albums WHERE Id={album_id}')
 
-    def write_wrapper(name, body):
+    FFMPEG = shutil.which('ffmpeg')
+
+    def write_wrapper(name, posix, windows):
+        # POSIX wrappers are sh scripts; Windows wrappers are .cmd files, which .NET's
+        # Process.Start (UseShellExecute=false) runs through cmd.exe with stdin/stdout piped.
         WRAPPERS.mkdir(exist_ok=True)
-        wrapper = WRAPPERS / name
-        wrapper.write_text('#!/bin/sh\n' + body)
-        wrapper.chmod(0o755)
+        if WINDOWS:
+            wrapper = WRAPPERS / (name + '.cmd')
+            wrapper.write_text('@echo off\r\n' + windows.replace('\n', '\r\n'), newline='')
+        else:
+            wrapper = WRAPPERS / name
+            wrapper.write_text('#!/bin/sh\n' + posix)
+            wrapper.chmod(0o755)
         return wrapper
 
     def host_log():
@@ -357,7 +391,11 @@ try:
     sql(lambda db: seed_candidate(db, 601))
     start()
     candidate_path = LIBRARY2 / 'Single601/Song.flac'
-    mutate_candidate = write_wrapper('mutate-candidate', f"cp '{FIXTURES / 'late-sample.flac'}' '{candidate_path}'\nexec ffmpeg \"$@\"")
+    # On Windows the verifier holds the file it is decoding open without write sharing, so
+    # the copy fails during the candidate's own decode and lands during the source's decode,
+    # still before the verifier's post-decode identity recheck.
+    mutate_candidate = write_wrapper('mutate-candidate', f"cp '{FIXTURES / 'late-sample.flac'}' '{candidate_path}'\nexec ffmpeg \"$@\"",
+                                     f'copy /y "{FIXTURES / "late-sample.flac"}" "{candidate_path}" >nul 2>nul\n"{FFMPEG}" %*\nexit /b %errorlevel%\n')
     provider('notification', {'exactAudioDecoderPath': str(mutate_candidate)})
     scan_second_artist('mid-analysis-mutation-preserves-release', '1 flagged for review')
     assert api('album/601')['monitored'] and candidate_path.exists()
@@ -376,7 +414,9 @@ try:
     stop()
     sql(lambda db: (drop_candidate(db, 602), seed_candidate(db, 603)))
     start()
-    crash_decoder = write_wrapper('crash-decoder', 'kill -9 $$\n')
+    # Windows has no signals: the wrapper's cmd.exe is terminated externally (TerminateProcess).
+    crash_decoder = write_wrapper('crash-decoder', 'kill -9 $$\n',
+                                  'powershell -NoProfile -NonInteractive -Command "Stop-Process -Force -Id (Get-CimInstance Win32_Process -Filter (\'ProcessId=\' + $PID)).ParentProcessId"\nexit /b 0\n')
     provider('notification', {'exactAudioDecoderPath': str(crash_decoder)})
     scan_second_artist('decoder-crash-preserves-release', '1 flagged for review')
     assert api('album/603')['monitored'] and (LIBRARY2 / 'Single603/Song.flac').exists()
@@ -407,11 +447,20 @@ try:
     sql(lambda db: seed_candidate(db, 605))
     start()
     guarded_dir = LIBRARY2 / 'Single605'
-    guarded_dir.chmod(0o555)
-    try:
-        scan_second_artist('delete-failure-injection-files-preserved', '1 delete failures')
-    finally:
-        guarded_dir.chmod(0o755)
+    if WINDOWS:
+        # Directory permission bits do not block deletion on Windows. An open handle without
+        # delete sharing (Python's default) does, while still allowing the guard's read.
+        held = (guarded_dir / 'Song.flac').open('rb')
+        try:
+            scan_second_artist('delete-failure-injection-files-preserved', '1 delete failures')
+        finally:
+            held.close()
+    else:
+        guarded_dir.chmod(0o555)
+        try:
+            scan_second_artist('delete-failure-injection-files-preserved', '1 delete failures')
+        finally:
+            guarded_dir.chmod(0o755)
     assert not api('album/605')['monitored']
     assert (guarded_dir / 'Song.flac').exists()
     assert 'reason=delete-failed' in host_log()
@@ -422,7 +471,8 @@ try:
     sql(lambda db: seed_candidate(db, 606))
     start()
     marker = WRAPPERS / 'decoder-started'
-    slow_decoder = write_wrapper('slow-decoder', f"printf started > '{marker}'\nsleep 4\nexec ffmpeg \"$@\"")
+    slow_decoder = write_wrapper('slow-decoder', f"printf started > '{marker}'\nsleep 4\nexec ffmpeg \"$@\"",
+                                 f'echo started>"{marker}"\nping -n 5 127.0.0.1 >nul\n"{FFMPEG}" %*\nexit /b %errorlevel%\n')
     provider('notification', {'exactAudioDecoderPath': str(slow_decoder)})
     value = api('command', {'name': 'UniqueSinglesScan', 'artistId': 2})
     for _ in range(200):
@@ -430,7 +480,7 @@ try:
             break
         time.sleep(.1)
     assert marker.exists(), 'slow decoder never started; cannot inject mid-analysis shutdown'
-    stop()  # SIGTERM during the in-flight decode
+    stop()  # SIGTERM (Windows: API shutdown) during the in-flight decode
     cancelled_text = host_log()
     tokens = [token for token in ('cancelled-or-time-budget', 'detail=cancelled', 'dispatcher-shutdown') if token in cancelled_text]
     # Lidarr's shutdown does not wait for the in-flight plugin command, so its cancellation
