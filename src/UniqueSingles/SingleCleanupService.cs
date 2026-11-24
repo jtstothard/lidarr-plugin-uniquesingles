@@ -1348,7 +1348,8 @@ public class SingleCleanupService : ISingleCleanupService
     /// The retained source is anchored by the complementary check: after each destructive
     /// call <paramref name="verifySurvivors"/> re-confirms the source still exists with its
     /// verified content, and any failure aborts the remaining deletions (fail closed). A source
-    /// removed inside the destructive window cannot be un-deleted, but it is never silent.
+    /// removed inside the destructive window cannot be un-deleted, but it is never silent, and
+    /// the candidate just deleted is restored from its guard handle where the OS still allows it.
     /// </summary>
     private bool TryDeleteSingleFiles(Artist artist, Album single, Album? comparisonAlbumContext,
         Func<TrackFile, System.IO.FileStream?, string?>? validate = null,
@@ -1427,8 +1428,9 @@ public class SingleCleanupService : ISingleCleanupService
 
                 // Survivor anchor: the retained source is the only copy left once this file is
                 // gone, so re-confirm it still exists with the verified content before any
-                // further deletion. A removal or replacement racing the destructive call cannot
-                // be undone, but it is detected here, reported loudly, and stops the rest.
+                // further deletion. A removal or replacement racing the destructive call is
+                // detected here, reported loudly, and stops the rest; the just-deleted candidate
+                // is then restored from the still-open guard handle.
                 var survivorFailure = verifySurvivors?.Invoke(file);
                 if (survivorFailure != null)
                 {
@@ -1437,6 +1439,11 @@ public class SingleCleanupService : ISingleCleanupService
                         single.Id,
                         file.Id,
                         survivorFailure);
+                    if (guard != null)
+                    {
+                        RestoreDeletedCandidate(guard, verifiedDigest, file, single.Id);
+                    }
+
                     return false;
                 }
 
@@ -1493,6 +1500,87 @@ public class SingleCleanupService : ISingleCleanupService
         }
 
         return allDeleted;
+    }
+
+    /// <summary>
+    /// Rescue copy after survivor loss (#77). The survivor check runs only after the deleted
+    /// candidate's pinned bytes were re-read and still matched the verified digest, so the open
+    /// guard handle holds exactly the verified audio. A recycle-bin move leaves it readable
+    /// everywhere; a plain unlink leaves it readable on POSIX until the handle closes. Those
+    /// bytes are written back to the candidate's original path, or to a "rescued" sibling
+    /// name if that path is taken, so a source that vanished inside the destructive window
+    /// costs no audio. Targets are created with <see cref="System.IO.FileMode.CreateNew"/>
+    /// and never overwrite anything. Lidarr no longer tracks the file (its TrackFile row went
+    /// with the deletion) and picks it up again on the next artist rescan. The single stays
+    /// unmonitored, and the cleanup still counts as a delete failure.
+    /// </summary>
+    private void RestoreDeletedCandidate(System.IO.FileStream deleted, string? verifiedDigest, TrackFile file, int releaseId)
+    {
+        Exception? lastError = null;
+        foreach (var target in RescueTargets(file.Path))
+        {
+            var created = false;
+            try
+            {
+                var directory = System.IO.Path.GetDirectoryName(target);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    System.IO.Directory.CreateDirectory(directory);
+                }
+
+                using (var output = new System.IO.FileStream(target, System.IO.FileMode.CreateNew, System.IO.FileAccess.Write, System.IO.FileShare.None))
+                {
+                    created = true;
+                    deleted.Seek(0, System.IO.SeekOrigin.Begin);
+                    deleted.CopyTo(output);
+                    output.Flush(true);
+                }
+
+                var verified = ContentMatches(target, verifiedDigest);
+                _logger.Warn(
+                    "UniqueSingles exact-audio cleanup: candidateReleaseId={0} trackFileId={1} rescue={2} path='{3}' detail=deleted-candidate-restored-from-delete-guard action=rescan-artist-to-reimport",
+                    releaseId,
+                    file.Id,
+                    verified ? "restored" : "restored-unverified",
+                    target);
+                return;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                if (created)
+                {
+                    // A partial copy is worse than none: remove only the file this call created.
+                    try
+                    {
+                        System.IO.File.Delete(target);
+                    }
+                    catch (Exception)
+                    {
+                        // Best effort; the rescue-failed line below still reports the loss.
+                    }
+                }
+            }
+        }
+
+        _logger.Warn(
+            lastError,
+            "UniqueSingles exact-audio cleanup: candidateReleaseId={0} trackFileId={1} rescue=failed path='{2}' detail=deleted-candidate-could-not-be-restored",
+            releaseId,
+            file.Id,
+            file.Path);
+    }
+
+    /// <summary>
+    /// Where a rescued candidate may be written: its original path first, then a sibling whose
+    /// name keeps the audio extension so Lidarr's rescan still treats it as a track file.
+    /// </summary>
+    internal static IEnumerable<string> RescueTargets(string path)
+    {
+        yield return path;
+        var directory = System.IO.Path.GetDirectoryName(path) ?? string.Empty;
+        var name = System.IO.Path.GetFileNameWithoutExtension(path) + ".rescued" + System.IO.Path.GetExtension(path);
+        yield return System.IO.Path.Combine(directory, name);
     }
 
     /// <summary>

@@ -132,11 +132,12 @@ public partial class SingleCleanupServiceTests
 
             var result = AudioRun(h, 0, ExactCleanupOptions());
 
-            // The first deletion cannot be undone and is reported as a failure; the second file
-            // was never touched.
+            // The first deletion is reported as a failure and its verified bytes are restored
+            // from the guard handle; the second file was never touched.
             Assert.Equal(1, result.DeleteFailures);
             Assert.Equal(new[] { 21 }, h.Deletes.DeletedFiles.Select(d => d.TrackFile.Id).ToArray());
-            Assert.False(System.IO.File.Exists(candidateOne));
+            Assert.True(System.IO.File.Exists(candidateOne));
+            Assert.Contains(log.WarnMessages, m => m.Contains("trackFileId=21") && m.Contains("rescue=restored"));
             Assert.True(System.IO.File.Exists(candidateTwo));
             Assert.True(System.IO.File.Exists(sourceTwo));
             Assert.Contains(log.WarnMessages, m => m.Contains("trackFileId=21") && m.Contains("reason=source-vanished-post-delete") && m.Contains("remainingDeletions=aborted"));
