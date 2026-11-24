@@ -1349,11 +1349,11 @@ public partial class SingleCleanupServiceTests
         public List<int> UserRemonitors { get; } = new();
         public Dictionary<int, UnmonitorProvenance> Provenance { get; } = new();
 
-        /// <summary>Albums whose current files all came from a grab that raced the unmonitor.</summary>
-        public HashSet<int> PreUnmonitorGrabAlbumIds { get; } = new();
+        /// <summary>Albums whose current files all came from grabs the leak backstop may clean.</summary>
+        public HashSet<int> CleanableGrabAlbumIds { get; } = new();
         public List<(int AlbumId, IReadOnlyCollection<int> FileIds)> GrabChecks { get; } = new();
 
-        /// <summary>Runs after each FilesCameFromPreUnmonitorGrab result is decided, with its 1-based call number.</summary>
+        /// <summary>Runs after each FilesCameFromCleanableGrab result is decided, with its 1-based call number.</summary>
         public Action<int>? OnGrabCheck { get; set; }
 
         /// <summary>Records the order of history writes relative to other recorded actions.</summary>
@@ -1393,10 +1393,10 @@ public partial class SingleCleanupServiceTests
             return true;
         }
 
-        public bool FilesCameFromPreUnmonitorGrab(int albumId, IReadOnlyCollection<int> trackFileIds, out string detail)
+        public bool FilesCameFromCleanableGrab(int albumId, IReadOnlyCollection<int> trackFileIds, out string detail)
         {
             GrabChecks.Add((albumId, trackFileIds));
-            var race = PreUnmonitorGrabAlbumIds.Contains(albumId) && trackFileIds.Count > 0;
+            var race = CleanableGrabAlbumIds.Contains(albumId) && trackFileIds.Count > 0;
             // State changes made here are seen from the next call on, as if they happened
             // after this check returned (during matching or exact-audio analysis).
             OnGrabCheck?.Invoke(GrabChecks.Count);

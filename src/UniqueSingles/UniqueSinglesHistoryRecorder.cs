@@ -27,6 +27,25 @@ public enum UnmonitorProvenance
     Unknown,
 }
 
+public static class UnmonitorProvenanceExtensions
+{
+    /// <summary>
+    /// True when the plugin must leave the release alone: the user re-monitored it, provenance
+    /// cannot be read, or the release is monitored now although the plugin's latest row is an
+    /// Unmonitor. The plugin never re-monitors a release, so a monitored release with a standing
+    /// plugin Unmonitor row was taken back by the user and its UserRemonitor row is missing: the
+    /// write failed, the artist lookup threw, or Lidarr's orphaned-history housekeeping removed a
+    /// row keyed to no artist. Without this, the next scan would unmonitor it again and delete
+    /// its files.
+    /// </summary>
+    public static bool ProtectsRelease(this UnmonitorProvenance provenance, bool monitored)
+    {
+        return provenance == UnmonitorProvenance.UserRemonitored
+            || provenance == UnmonitorProvenance.Unknown
+            || (monitored && provenance == UnmonitorProvenance.PluginUnmonitored);
+    }
+}
+
 /// <summary>
 /// Records plugin unmonitor actions as Lidarr History rows so cleanups are auditable outside
 /// plugin logs. File deletions already produce Lidarr's own TrackFileDeleted history rows: the
@@ -37,7 +56,9 @@ public enum UnmonitorProvenance
 ///
 /// The same rows are the plugin's provenance record: an unmonitored release is only treated as
 /// plugin-unmonitored when its latest plugin row is an Unmonitor, and a UserRemonitor row marks
-/// a release the user took back, which the plugin never unmonitors or deletes again. Because a
+/// a release the user took back. Such a release, and a monitored release whose latest plugin row
+/// is still an Unmonitor (see <see cref="UnmonitorProvenanceExtensions.ProtectsRelease"/>), is
+/// not unmonitored or deleted by the plugin while that row stands. Because a
 /// file-less unmonitor relies on its row (without it, a download landing later is never
 /// cleaned), callers write the Unmonitor row before unmonitoring and skip a file-less unmonitor
 /// whose row could not be written.
@@ -62,14 +83,15 @@ public interface ICleanupHistoryRecorder
     UnmonitorProvenance GetProvenance(int albumId);
 
     /// <summary>
-    /// Leak-backstop gate for files in a release the plugin unmonitored. True only when every
-    /// file traces through Lidarr's TrackFileImported row to an automatic Grabbed row dated at
-    /// or before the plugin's latest Unmonitor row (plus <see cref="UniqueSinglesHistoryRecorder.GrabUnmonitorTolerance"/>):
-    /// the download raced the unmonitor. Anything else (a user grab, a grab after the unmonitor,
-    /// a manual or disk-scan import without a grab, missing rows, lookup failure) returns false
-    /// and the files are kept.
+    /// Leak-backstop gate for files in a release the plugin unmonitored. True when every file
+    /// traces through Lidarr's TrackFileImported row to a Grabbed row that is either automatic
+    /// (any ReleaseSource other than InteractiveSearch or UserInvokedSearch, whenever it was
+    /// grabbed) or user-initiated and dated at or before the plugin's latest Unmonitor row plus
+    /// <see cref="UniqueSinglesHistoryRecorder.GrabUnmonitorTolerance"/>. A user grab after the
+    /// unmonitor, an import without a grab (manual or disk-scan), missing rows, or a lookup
+    /// failure returns false and the files are kept.
     /// </summary>
-    bool FilesCameFromPreUnmonitorGrab(int albumId, IReadOnlyCollection<int> trackFileIds, out string detail);
+    bool FilesCameFromCleanableGrab(int albumId, IReadOnlyCollection<int> trackFileIds, out string detail);
 }
 
 public sealed class UniqueSinglesHistoryRecorder : ICleanupHistoryRecorder
@@ -86,18 +108,23 @@ public sealed class UniqueSinglesHistoryRecorder : ICleanupHistoryRecorder
     internal const string FileIdKey = "FileId";
 
     /// <summary>
-    /// A grab recorded this soon after the unmonitor still counts as racing it: RSS sync decides
-    /// on the monitored state it read, then sends each approved release to the download client
-    /// in turn, so the Grabbed row can trail the decision. User-started grabs are excluded by
-    /// their ReleaseSource, not by this window.
+    /// A user-initiated grab recorded this soon after the unmonitor still counts as predating
+    /// it: a search decides on the monitored state it read, then sends each approved release to
+    /// the download client in turn, so the Grabbed row can trail the decision. Automatic grabs
+    /// are cleaned whatever their timing, so this window only applies to user sources.
     /// </summary>
     internal static readonly TimeSpan GrabUnmonitorTolerance = TimeSpan.FromMinutes(5);
 
     /// <summary>
-    /// ReleaseSourceType values (Lidarr DownloadDecisionMaker) that mean the user started the
-    /// search: InteractiveSearch is a grab from the interactive-search results, UserInvokedSearch
-    /// a manually triggered album/artist search command. Lidarr accepts unmonitored albums for
-    /// both, so they are how a user fetches a single the plugin unmonitored.
+    /// ReleaseSourceType values (Lidarr NzbDrone.Core.Parser.Model.ReleaseSourceType) that mean
+    /// the user started the search: InteractiveSearch is a grab from the interactive-search
+    /// results, UserInvokedSearch a manually triggered search command. Every other value (Rss,
+    /// Search, ReleasePush, Unknown, a missing or unrecognised value) is treated as automatic.
+    /// Lidarr runs automatic searches long after an album is unmonitored (the post-refresh
+    /// AlbumSearchCommand for ids captured while monitored, Missing sweeps over a list captured at
+    /// sweep start, failed-download re-searches, import-list sync), and its
+    /// MonitoredAlbumSpecification does not check the monitored flag for searches, so an
+    /// automatic grab after the unmonitor is still a leak, not a user fetch.
     /// </summary>
     private static readonly HashSet<string> UserReleaseSources = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -116,14 +143,13 @@ public sealed class UniqueSinglesHistoryRecorder : ICleanupHistoryRecorder
 
     public bool RecordUnmonitor(Artist artist, Album single, string reason)
     {
-        return artist != null && Record(artist.Id, artist.Name, single, UnmonitorAction, reason, "unmonitor");
+        return artist != null && Record(artist, single, UnmonitorAction, reason, "unmonitor");
     }
 
     public bool RecordUnmonitorReverted(Artist artist, Album single)
     {
         return artist != null && Record(
-            artist.Id,
-            artist.Name,
+            artist,
             single,
             UnmonitorRevertedAction,
             "The unmonitor recorded just before this row failed; the release stayed monitored.",
@@ -132,17 +158,11 @@ public sealed class UniqueSinglesHistoryRecorder : ICleanupHistoryRecorder
 
     public bool RecordUserRemonitor(Artist? artist, Album single)
     {
-        if (single == null)
-        {
-            return false;
-        }
-
         return Record(
-            artist?.Id ?? single.ArtistId,
-            artist?.Name,
+            artist,
             single,
             UserRemonitorAction,
-            "User re-monitored a release UniqueSingles had unmonitored; the plugin will not unmonitor it or delete its files again.",
+            "User re-monitored a release UniqueSingles had unmonitored; the plugin leaves it alone while this row stands.",
             "user-remonitor");
     }
 
@@ -162,7 +182,7 @@ public sealed class UniqueSinglesHistoryRecorder : ICleanupHistoryRecorder
         }
     }
 
-    public bool FilesCameFromPreUnmonitorGrab(int albumId, IReadOnlyCollection<int> trackFileIds, out string detail)
+    public bool FilesCameFromCleanableGrab(int albumId, IReadOnlyCollection<int> trackFileIds, out string detail)
     {
         if (trackFileIds == null || trackFileIds.Count == 0)
         {
@@ -223,21 +243,18 @@ public sealed class UniqueSinglesHistoryRecorder : ICleanupHistoryRecorder
                     return false;
                 }
 
+                // Automatic grabs are cleaned whatever their timing. A user grab is kept when it
+                // postdates the unmonitor (the user fetching a single the plugin dropped) and
+                // cleaned when it predates it (it raced the unmonitor like any other download).
                 var source = GetData(grab, ReleaseSourceKey);
-                if (source != null && UserReleaseSources.Contains(source))
+                if (IsUserReleaseSource(source) && grab.Date > cutoff)
                 {
-                    detail = $"fileId={fileId} downloadId={import.DownloadId} user-grab releaseSource={source}";
-                    return false;
-                }
-
-                if (grab.Date > cutoff)
-                {
-                    detail = $"fileId={fileId} downloadId={import.DownloadId} grabbed-after-unmonitor grabbedAt={grab.Date:u} unmonitoredAt={unmonitoredAt:u}";
+                    detail = $"fileId={fileId} downloadId={import.DownloadId} user-grab-after-unmonitor releaseSource={source} grabbedAt={grab.Date:u} unmonitoredAt={unmonitoredAt:u}";
                     return false;
                 }
             }
 
-            detail = $"all-files-from-grabs-before-unmonitor unmonitoredAt={unmonitoredAt:u}";
+            detail = $"all-files-from-automatic-or-pre-unmonitor-grabs unmonitoredAt={unmonitoredAt:u}";
             return true;
         }
         catch (Exception ex)
@@ -249,6 +266,11 @@ public sealed class UniqueSinglesHistoryRecorder : ICleanupHistoryRecorder
             detail = "lookup-failed";
             return false;
         }
+    }
+
+    internal static bool IsUserReleaseSource(string? releaseSource)
+    {
+        return releaseSource != null && UserReleaseSources.Contains(releaseSource.Trim());
     }
 
     private static EntityHistory? LatestPluginRow(IEnumerable<EntityHistory>? rows)
@@ -315,22 +337,28 @@ public sealed class UniqueSinglesHistoryRecorder : ICleanupHistoryRecorder
         return null;
     }
 
-    private bool Record(int artistId, string? artistName, Album single, string action, string reason, string logAction)
+    /// <summary>
+    /// Never throws. <paramref name="artist"/> may be null, in which case the row is keyed by the
+    /// album's ArtistId, which is read inside the try because it can lazy-load.
+    /// </summary>
+    private bool Record(Artist? artist, Album single, string action, string reason, string logAction)
     {
         if (single == null)
         {
             return false;
         }
 
+        int? artistId = null;
         try
         {
+            artistId = artist?.Id ?? single.ArtistId;
             var history = new EntityHistory
             {
                 EventType = EntityHistoryEventType.Unknown,
                 Date = DateTime.UtcNow,
                 Quality = new QualityModel(),
                 SourceTitle = PluginName,
-                ArtistId = artistId,
+                ArtistId = artistId.Value,
                 AlbumId = single.Id,
             };
             history.Data.Add(PluginKey, PluginName);
@@ -341,7 +369,7 @@ public sealed class UniqueSinglesHistoryRecorder : ICleanupHistoryRecorder
                 "UniqueSingles history: action={0}-recorded artistId={1} artist='{2}' albumId={3} album='{4}'",
                 logAction,
                 artistId,
-                artistName,
+                artist?.Name,
                 single.Id,
                 single.Title);
             return true;

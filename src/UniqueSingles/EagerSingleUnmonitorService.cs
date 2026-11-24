@@ -145,7 +145,8 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
     /// the re-entrant dispatch terminates immediately.
     ///
     /// An explicit re-monitor of a single the plugin unmonitored is the user taking it back: it
-    /// is recorded as a UserRemonitor History row and never evaluated again. Lidarr's own bulk
+    /// is recorded as a UserRemonitor History row, which keeps the plugin from unmonitoring it or
+    /// deleting its files while the row stands. Lidarr's own bulk
     /// monitoring writes (AlbumMonitoredService on artist add) use UpdateMany, publish no
     /// AlbumEditedEvent, and so are not mistaken for the user.
     /// </summary>
@@ -160,8 +161,9 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
                 if (provenance == UnmonitorProvenance.PluginUnmonitored)
                 {
                     // The row is keyed by album, so it is written even when the artist cannot be
-                    // resolved: skipping it would leave the latest plugin row an Unmonitor on a
-                    // monitored single, which the cleanup paths would unmonitor and delete again.
+                    // resolved. A monitored single whose latest plugin row is still an Unmonitor
+                    // is protected anyway (ProtectsRelease); the row keeps it protected after a
+                    // later unmonitor by the user.
                     var artist = ResolveArtist(album);
                     if (artist == null)
                     {
@@ -174,7 +176,7 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
                     if (_historyRecorder.RecordUserRemonitor(artist, album))
                     {
                         _logger.Info(
-                            "UniqueSingles eager: user re-monitored a single the plugin unmonitored; it will not be unmonitored or deleted again. artistId={0} artist='{1}' singleId={2} single='{3}' reason=user-remonitored",
+                            "UniqueSingles eager: user re-monitored a single the plugin unmonitored; the plugin leaves it alone while this row stands. artistId={0} artist='{1}' singleId={2} single='{3}' reason=user-remonitored",
                             artist?.Id,
                             artist?.Name,
                             album.Id,
@@ -183,7 +185,7 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
                     else
                     {
                         _logger.Warn(
-                            "UniqueSingles eager: user re-monitored a single the plugin unmonitored, but the UserRemonitor History row could not be written; a later cleanup may unmonitor it again. albumId={0} single='{1}' reason=remonitor-record-failed",
+                            "UniqueSingles eager: user re-monitored a single the plugin unmonitored, but the UserRemonitor History row could not be written; it stays protected while it is monitored, but unmonitoring it again would let the plugin treat it as its own unmonitor. albumId={0} single='{1}' reason=remonitor-record-failed",
                             album.Id,
                             album.Title);
                     }
@@ -304,8 +306,10 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
             return false;
         }
 
+        // The single is monitored here, so a standing plugin Unmonitor row means the user
+        // re-monitored it and its UserRemonitor row is missing; it is protected the same way.
         var provenance = _historyRecorder.GetProvenance(single.Id);
-        if (provenance == UnmonitorProvenance.UserRemonitored || provenance == UnmonitorProvenance.Unknown)
+        if (provenance.ProtectsRelease(single.Monitored))
         {
             _logger.Info(
                 "UniqueSingles eager keep: user re-monitored this single after the plugin unmonitored it. artistId={0} artist='{1}' singleId={2} single='{3}' provenance={4} reason=user-remonitored",

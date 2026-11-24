@@ -707,8 +707,7 @@ public class EagerSingleUnmonitorServiceTests
     [Fact]
     public void AlbumEditedEvent_UserRemonitor_ArtistUnresolvable_StillRecordsOverrideAndProtects()
     {
-        // Without the UserRemonitor row the latest plugin row stays an Unmonitor on a monitored
-        // single, and the cleanup paths would unmonitor and delete it again.
+        // The row is keyed by album, so it is written even when the artist cannot be resolved.
         var artist = Artist();
         var album = DownloadedAlbum();
         var single = Single(200, "Hit Single", monitored: true);
@@ -725,6 +724,32 @@ public class EagerSingleUnmonitorServiceTests
         Assert.Equal(new[] { single.Id }, historyRecorder.UserRemonitors);
         Assert.Null(Assert.Single(historyRecorder.UserRemonitorArtists));
         Assert.Equal(UnmonitorProvenance.UserRemonitored, historyRecorder.GetProvenance(single.Id));
+        Assert.True(single.Monitored);
+        Assert.Empty(albumService.SetMonitoredCalls);
+        Assert.Empty(historyRecorder.Unmonitors);
+    }
+
+    [Fact]
+    public void AlbumEditedEvent_UserRemonitorRowWriteFails_SingleStaysProtected()
+    {
+        // The UserRemonitor row could not be written, so the latest plugin row is still the
+        // Unmonitor. A monitored single with a standing plugin Unmonitor row is protected anyway.
+        var artist = Artist();
+        var album = DownloadedAlbum();
+        var single = Single(200, "Hit Single", monitored: true);
+        single.Artist = artist;
+        var (albumService, _, historyRecorder, service) = Setup(
+            artist, album, single,
+            albumTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 11) },
+            singleTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 0) });
+        historyRecorder.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
+        historyRecorder.FailUserRemonitor = true;
+
+        service.Handle(new AlbumEditedEvent(single, single));
+        service.Handle(new AlbumUpdatedEvent(single));
+        service.Handle(new AlbumInfoRefreshedEvent(artist, new List<Album> { single }, new List<Album>(), new List<Album>()));
+
+        Assert.Equal(UnmonitorProvenance.PluginUnmonitored, historyRecorder.GetProvenance(single.Id));
         Assert.True(single.Monitored);
         Assert.Empty(albumService.SetMonitoredCalls);
         Assert.Empty(historyRecorder.Unmonitors);
@@ -772,11 +797,12 @@ public class EagerSingleUnmonitorServiceTests
     }
 
     [Fact]
-    public void AlbumUpdatedEvent_PluginUnmonitoredSingleRemonitoredByLidarrBulkWrite_IsUnmonitoredAgain()
+    public void AlbumUpdatedEvent_MonitoredSingleWithStandingPluginUnmonitorRow_IsNotUnmonitoredAgain()
     {
-        // AlbumMonitoredService (artist add) overwrites monitored state with UpdateMany and
-        // publishes no AlbumEditedEvent. That is not the user, so the release is not taken
-        // out of the plugin's hands.
+        // The single is monitored but its latest plugin row is an Unmonitor: either the user
+        // re-monitored it and the UserRemonitor row was lost, or Lidarr's AlbumMonitoredService
+        // (artist add) re-monitored it with UpdateMany. The two cannot be told apart, so the
+        // single is protected rather than unmonitored against a possible user decision.
         var artist = Artist();
         var album = DownloadedAlbum();
         var single = Single(200, "Hit Single", monitored: true);
@@ -789,8 +815,9 @@ public class EagerSingleUnmonitorServiceTests
 
         service.Handle(new AlbumUpdatedEvent(single));
 
-        Assert.False(single.Monitored);
-        Assert.Equal(new[] { (single.Id, false) }, albumService.SetMonitoredCalls);
+        Assert.True(single.Monitored);
+        Assert.Empty(albumService.SetMonitoredCalls);
+        Assert.Empty(historyRecorder.Unmonitors);
         Assert.Empty(historyRecorder.UserRemonitors);
     }
 
@@ -812,8 +839,10 @@ public class EagerSingleUnmonitorServiceTests
 
         service.Handle(new AlbumEditedEvent(single, stored));
 
+        // Not recorded as a re-monitor; the standing Unmonitor row on a monitored single still
+        // keeps it from being unmonitored again.
         Assert.Empty(historyRecorder.UserRemonitors);
-        Assert.Equal(new[] { (single.Id, false) }, albumService.SetMonitoredCalls);
+        Assert.Empty(albumService.SetMonitoredCalls);
     }
 
     // ── Test seams ───────────────────────────────────────────────────────────
@@ -1151,7 +1180,7 @@ public class EagerSingleUnmonitorServiceTests
             return true;
         }
 
-        public bool FilesCameFromPreUnmonitorGrab(int albumId, IReadOnlyCollection<int> trackFileIds, out string detail)
+        public bool FilesCameFromCleanableGrab(int albumId, IReadOnlyCollection<int> trackFileIds, out string detail)
         {
             detail = "not-used";
             return false;

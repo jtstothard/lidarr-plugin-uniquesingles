@@ -127,7 +127,7 @@ public partial class SingleCleanupServiceTests
         var logger = new RecordingLogger();
         var history = new RecordingHistoryRecorder();
         history.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
-        history.PreUnmonitorGrabAlbumIds.Add(single.Id); // race: grabbed before the unmonitor
+        history.CleanableGrabAlbumIds.Add(single.Id); // race: grabbed before the unmonitor
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, logger, history);
 
         var result = service.CleanupSingleSelfCheckWithOptions(artist, single, AlbumOptions());
@@ -157,7 +157,7 @@ public partial class SingleCleanupServiceTests
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var history = new RecordingHistoryRecorder();
         history.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
-        history.PreUnmonitorGrabAlbumIds.Add(single.Id); // race: grabbed before the unmonitor
+        history.CleanableGrabAlbumIds.Add(single.Id); // race: grabbed before the unmonitor
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, historyRecorder: history);
 
         var result = service.ScanArtistWithOptions(artist, AlbumOptions());
@@ -182,7 +182,7 @@ public partial class SingleCleanupServiceTests
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var history = new RecordingHistoryRecorder();
         history.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
-        history.PreUnmonitorGrabAlbumIds.Add(single.Id); // race: grabbed before the unmonitor
+        history.CleanableGrabAlbumIds.Add(single.Id); // race: grabbed before the unmonitor
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, historyRecorder: history);
 
         var result = service.CleanupSingleSelfCheckWithOptions(artist, single, AlbumOptions());
@@ -207,7 +207,7 @@ public partial class SingleCleanupServiceTests
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var history = new RecordingHistoryRecorder();
         history.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
-        history.PreUnmonitorGrabAlbumIds.Add(single.Id); // race: grabbed before the unmonitor
+        history.CleanableGrabAlbumIds.Add(single.Id); // race: grabbed before the unmonitor
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, historyRecorder: history);
         var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album" }, Tier3Action.AutoClean);
 
