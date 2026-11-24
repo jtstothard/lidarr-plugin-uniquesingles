@@ -399,7 +399,7 @@ public partial class SingleCleanupServiceTests
         var deleteMediaFiles = new RecordingDeleteMediaFiles();
         var logger = new RecordingLogger();
         var recorder = new UniqueSinglesHistoryRecorder(repository.AsRepository(), logger.Logger);
-        var service = new SingleCleanupService(albumService, trackService, mediaFileService, deleteMediaFiles, recorder, new StubInFlightProbe(), logger.Logger);
+        var service = new SingleCleanupService(albumService, trackService, mediaFileService, deleteMediaFiles, recorder, new StubInFlightProbe(), new RecordingFolderCleanup(), logger.Logger);
         return (single, deleteMediaFiles, logger, service);
     }
 
