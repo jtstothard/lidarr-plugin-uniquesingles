@@ -1,12 +1,14 @@
 # Build 1.0.2.125 production deployment — date unrecorded (backfilled receipt)
 
 **This is a backfilled receipt, written 2026-11-24 for chain completeness.** Build
-**1.0.2.125** was deployed to Proxmox **192.168.10.51** VM102 (`media-vm`), Docker
-container `lidarr`, but the deployment itself was never recorded: no deploy session
-receipt, rollback bundle record or settings snapshot from that session exists in this
-repository. Everything below is either recoverable from GitHub (marked as such) or
-inferred from the PR #59 receipt ([pr-59-production.md](pr-59-production.md)); anything
-else is marked **unverifiable** rather than guessed.
+**1.0.2.125** was deployed to the same production host as every other receipt —
+Proxmox **192.168.10.51** VM102 (`media-vm`), Docker container `lidarr` (this host claim
+is **inferred** from PR #59's rollback record naming 1.0.2.125 as the previous build, not
+from a record of this deployment) — but the deployment itself was never recorded: no
+deploy session receipt, rollback bundle record or settings snapshot from that session
+exists in this repository. Everything below is either recoverable from GitHub (marked as
+such) or inferred from the PR #59 receipt ([pr-59-production.md](pr-59-production.md));
+anything else is marked **unverifiable** rather than guessed.
 
 ## When it was deployed
 
@@ -33,11 +35,12 @@ the deployed-before state is **unverifiable** because no rollback bundle for the
   run number 125, **Build Plugin** passed (event `push`, head `4eea9f8`, created
   2026-11-10T16:00:01Z).
 - GitHub release **1.0.2.125**, published (not draft), created
-  **2026-11-10T16:01:05Z**; tag `1.0.2.125` → `4eea9f8`. It was not Latest at the
-  time of this audit (1.0.2.130 is).
+  **2026-11-10T15:59:57Z**, published **2026-11-10T16:01:05Z**; tag `1.0.2.125` →
+  `4eea9f8`. It was not Latest at the time of this audit (1.0.2.130 is).
 - Release ZIP `Lidarr.Plugin.UniqueSingles.net8.0.zip`, 69,142 bytes, GitHub asset digest
   SHA-256 `6ace4b039a4c7c658482da72d8f858fc13fb6ca1c0a606acc82cc0d6ca1ffdb1`.
-  Whether the deployed ZIP was this exact asset is **unverifiable** (no download record).
+  Whether the deployed ZIP was this exact asset is now **verified at member level** — see
+  "Deployed artifact" below; the download/install session itself remains unrecorded.
 
 ## What this build delivers
 
@@ -54,9 +57,12 @@ installed immediately before the 1.0.2.128 swap,
 `plugin-before-1.0.2.125.dll` SHA-256
 `2c9426dc45725ce9fc826f43b7cfe12c95c3f3b271c321bea0b9d585aa5478ec`, and
 `plugin-before-1.0.2.125.pdb` SHA-256
-`6b3515c044340ec98b935d81d2266bae1186f94316c2908133a76af8e389f569`. Byte comparison of
-these hashes against the 1.0.2.125 release ZIP members is **unverifiable** from the
-repository alone (the ZIP digest above covers the archive, not its members).
+`6b3515c044340ec98b935d81d2266bae1186f94316c2908133a76af8e389f569`. **Verified:** the
+1.0.2.125 release ZIP was downloaded and its members hashed on 2026-11-24 —
+`Lidarr.Plugin.UniqueSingles.dll` SHA-256 `2c9426dc…` and `Lidarr.Plugin.UniqueSingles.pdb`
+SHA-256 `6b3515c0…`, both matching the backup-bundle hashes above exactly (the ZIP holds
+exactly these two members). The deployed binary is therefore identical to the release
+asset's content; what remains unverifiable is only the install session itself.
 
 ## Not recorded
 
