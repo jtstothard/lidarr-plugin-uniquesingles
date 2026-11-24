@@ -4,6 +4,10 @@ All notable changes to Unique Singles will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- CI now smoke-tests every build in a real Lidarr host. The `host-smoke` job loads the packaged plugin into throwaway LinuxServer Lidarr containers, `latest` (stable, 3.1.x) and `nightly` (4.0.x on .NET 10, what the production instance runs), with an empty config, no network and no media. It checks that the plugin loads at the built version, creates its Connect and Metadata entries, runs a scan, and fails on plugin-related warnings or errors, including DryIoc dependency-resolution failures. Unit tests compile against 3.1.3.4968 reference assemblies and could not catch a dependency the host does not register. A main build that fails on either image is not released. Script: `scripts/smoke-lidarr-container.py`.
+
 ### Fixed
 
 - Releases can no longer hand "Latest" to an older build (#75). Main-branch runs of `build.yml` are now serialized by a workflow `concurrency` group (queued runs wait rather than being cancelled; superseded pull-request runs are cancelled), so two quick merges publish in run order. The release job also checks the current Latest release first and marks the new release Latest only when its version is at least as new, so re-running an old main run republishes that build without taking Latest from a newer one. If that lookup fails, the build is marked Latest as before.
