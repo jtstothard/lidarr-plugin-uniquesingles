@@ -1535,15 +1535,6 @@ public class SingleCleanupService : ISingleCleanupService
                     deleted.CopyTo(output);
                     output.Flush(true);
                 }
-
-                var verified = ContentMatches(target, verifiedDigest);
-                _logger.Warn(
-                    "UniqueSingles exact-audio cleanup: candidateReleaseId={0} trackFileId={1} rescue={2} path='{3}' detail=deleted-candidate-restored-from-delete-guard action=rescan-artist-to-reimport",
-                    releaseId,
-                    file.Id,
-                    verified ? "restored" : "restored-unverified",
-                    target);
-                return;
             }
             catch (Exception ex)
             {
@@ -1560,7 +1551,28 @@ public class SingleCleanupService : ISingleCleanupService
                         // Best effort; the rescue-failed line below still reports the loss.
                     }
                 }
+
+                continue;
             }
+
+            // The copy is complete; a failed read-back only downgrades the log, it never removes it.
+            bool verified;
+            try
+            {
+                verified = ContentMatches(target, verifiedDigest);
+            }
+            catch (Exception)
+            {
+                verified = false;
+            }
+
+            _logger.Warn(
+                "UniqueSingles exact-audio cleanup: candidateReleaseId={0} trackFileId={1} rescue={2} path='{3}' detail=deleted-candidate-restored-from-delete-guard action=rescan-artist-to-reimport",
+                releaseId,
+                file.Id,
+                verified ? "restored" : "restored-unverified",
+                target);
+            return;
         }
 
         _logger.Warn(
