@@ -281,7 +281,10 @@ public sealed class FfmpegExactAudioVerifier : IExactAudioVerifier
         }
         finally
         {
-            if (!process.HasExited) process.Kill(true);
+            // Cleanup must never throw from finally (it would mask the decode result); the same kill can throw
+            // Win32Exception/NotSupportedException here as in RegisterKillOnCancel.
+            try { if (!process.HasExited) process.Kill(true); }
+            catch (Exception ex) { Debug.WriteLine($"Decoder kill failed: {ex.GetType().Name}"); }
             // Join all pipe operations before disposing the process, including error/cancellation paths.
             try { await writer; } catch (Exception) { }
             try { await stderr; } catch (Exception) { }
