@@ -28,9 +28,10 @@ public class UniqueSinglesNotification : NotificationBase<UniqueSinglesSettings>
         IDeleteMediaFiles deleteMediaFiles,
         ICleanupHistoryRecorder historyRecorder,
         IInFlightReleaseProbe inFlightProbe,
+        ISingleFolderCleanup folderCleanup,
         IAudioAnalysisCancellation audioAnalysisCancellation,
         Logger logger)
-        : this(new SingleCleanupService(albumService, trackService, mediaFileService, deleteMediaFiles, historyRecorder, inFlightProbe, logger), audioAnalysisCancellation, logger)
+        : this(new SingleCleanupService(albumService, trackService, mediaFileService, deleteMediaFiles, historyRecorder, inFlightProbe, folderCleanup, logger), audioAnalysisCancellation, logger)
     {
     }
 

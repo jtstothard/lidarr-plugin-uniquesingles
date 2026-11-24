@@ -372,6 +372,59 @@ public partial class SingleCleanupServiceTests
         Assert.Contains(logger.WarnMessages, m => m.Contains("delete failure", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void CleanupSinglesForArtist_FolderCleanup_RunsOnlyAfterAllAudioDeleted(bool deleteFails, bool expectFolderCleanup)
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
+        var albumService = new RecordingAlbumService(album, single);
+        var trackService = new RecordingTrackService()
+            .WithTracks(album.Id, Track("Song", 180000, "mbid", fileId: 11))
+            .WithTracks(single.Id, Track("Song", 180000, "mbid", fileId: 21));
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(901, single.Id, "/music/Artist/Single/(2024) Single/01 Song.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles { ThrowOnDelete = deleteFails };
+        var folderCleanup = new RecordingFolderCleanup();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, folderCleanup: folderCleanup);
+
+        service.CleanupSinglesForArtist(artist, album);
+
+        if (expectFolderCleanup)
+        {
+            var call = Assert.Single(folderCleanup.Calls);
+            Assert.Equal(single.Id, call.SingleId);
+            Assert.Equal(new List<int> { 901 }, call.FileIds);
+        }
+        else
+        {
+            Assert.Empty(folderCleanup.Calls);
+        }
+    }
+
+    [Fact]
+    public void ScanArtistWithOptions_SweepsStrandedFoldersWithTheArtistsAlbums()
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var doneSingle = Album(200, "Already Done", "Single", monitored: false);
+        var albumService = new RecordingAlbumService(album, doneSingle);
+        var trackService = new RecordingTrackService()
+            .WithTracks(album.Id, Track("Song", 180000, "mbid", fileId: 11))
+            .WithTracks(doneSingle.Id, Track("Song", 180000, "mbid", fileId: 0));
+        var folderCleanup = new RecordingFolderCleanup();
+        var service = Service(albumService, trackService, new RecordingMediaFileService(), new RecordingDeleteMediaFiles(), folderCleanup: folderCleanup);
+
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.FlagOnly);
+        service.ScanArtistWithOptions(artist, options);
+
+        var sweep = Assert.Single(folderCleanup.Sweeps);
+        Assert.Equal(artist.Id, sweep.ArtistId);
+        Assert.Equal(new List<int> { 100, 200 }, sweep.AlbumIds.OrderBy(id => id).ToList());
+    }
+
     // ============================================================
     // New methods with options
     // ============================================================
@@ -925,7 +978,8 @@ public partial class SingleCleanupServiceTests
         RecordingDeleteMediaFiles deleteMediaFiles,
         RecordingLogger? logger = null,
         RecordingHistoryRecorder? historyRecorder = null,
-        StubInFlightProbe? inFlightProbe = null)
+        StubInFlightProbe? inFlightProbe = null,
+        RecordingFolderCleanup? folderCleanup = null)
     {
         var loggerHarness = logger ?? new RecordingLogger();
         return new SingleCleanupService(
@@ -935,7 +989,25 @@ public partial class SingleCleanupServiceTests
             deleteMediaFiles,
             historyRecorder ?? new RecordingHistoryRecorder(),
             inFlightProbe ?? new StubInFlightProbe(),
+            folderCleanup ?? new RecordingFolderCleanup(),
             loggerHarness.Logger);
+    }
+
+    internal sealed class RecordingFolderCleanup : ISingleFolderCleanup
+    {
+        public List<(int SingleId, List<int> FileIds)> Calls { get; } = new();
+
+        public List<(int ArtistId, List<int> AlbumIds)> Sweeps { get; } = new();
+
+        public void RemoveLeftovers(Artist artist, Album single, IReadOnlyCollection<TrackFile> deletedFiles)
+        {
+            Calls.Add((single.Id, deletedFiles.Select(f => f.Id).ToList()));
+        }
+
+        public void SweepStrandedFolders(Artist artist, IReadOnlyCollection<Album> albums)
+        {
+            Sweeps.Add((artist.Id, albums.Select(a => a.Id).ToList()));
+        }
     }
 
     private static Artist Artist() => new() { Id = 42, Name = "Test Artist" };
