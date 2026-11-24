@@ -81,13 +81,21 @@ Lidarr does not wait for it. Checked against the Lidarr source at tag `v3.1.3.49
 - `AlbumAddedService.SearchForRecentlyAdded` then pushes an `AlbumSearchCommand` for those
   cached ids. Nothing on that path re-checks the monitored flag, and
   `MonitoredAlbumSpecification` explicitly skips its monitored check during a search, so a
-  single unmonitored in between can still be grabbed.
+  single unmonitored in between can still be grabbed. That grab is recorded with
+  `ReleaseSource=Search`, so the leak backstop (below) treats it as automatic and cleans the
+  files once they import, when a cleanup path is on.
 - When an artist is added, `ArtistScannedHandler` calls
   `AlbumMonitoredService.SetAlbumMonitoredStatus`, which applies the add-time monitor option
   (for example All, or Missing, which monitors released albums without files) and writes the
   result with `UpdateMany`. That can re-monitor a single the plugin had just unmonitored, and it
-  publishes no `AlbumEditedEvent`, so the plugin is not told and does not re-evaluate it. The eager unmonitor is therefore best effort: a redundant single
-  can still be grabbed after it ran.
+  publishes no `AlbumEditedEvent`, so the plugin is not told. The single is then monitored
+  while the plugin's latest row for it is an `Unmonitor`, which the plugin cannot tell apart
+  from a user re-monitor whose row was lost, so it protects the single (see
+  [Re-monitored singles](#re-monitored-singles)): it is not unmonitored again, and files that
+  download for it are kept.
+
+The eager unmonitor is therefore best effort: a redundant single can still be grabbed after it
+ran.
 
 What the plugin promises is conditional, and it is about the end state rather than the
 ordering. A redundant single that ends up with downloaded files is cleaned (its files deleted)
@@ -96,22 +104,30 @@ only when **all** of these hold:
 - The path that cleans it is switched on. The import-time half needs the Connect entry; the
   scan half needs the scheduled scan, which is **off by default**. With neither, the grab and
   download can still happen and the files stay.
-- The files are provably the plugin's to clean. Either the single was left monitored because
-  a download was in the download client's queue or in Lidarr's tracked downloads (below), so
-  the import-time cleanup sees a normal monitored single, or the files came from an automatic
-  grab that raced the plugin's unmonitor (the leak backstop, below).
+- The files are the plugin's to clean by its History. Either the single was left monitored
+  because a download was in the download client's queue or in Lidarr's tracked downloads
+  (below), so the import-time cleanup sees a normal monitored single, or the single is still
+  unmonitored by the plugin and every file came from an automatic grab (whenever Lidarr made
+  it, including the post-refresh search above) or from a user grab that predates the
+  unmonitor (the leak backstop, below).
 - The normal cleanup rules still call it redundant (Tier-3 action, exact-audio, #17
   protection), and the delete itself succeeds.
 
 Files stay, by design or by failure, when:
 
-- the user fetched the release deliberately after the unmonitor (interactive search, a Search
-  the user clicked, a later grab, a manual import). That is the user's own content, not a
-  leak, and the backstop keeps it;
+- the user fetched the release after the unmonitor through interactive search or a Search the
+  user started (`ReleaseSource=InteractiveSearch` or `UserInvokedSearch`), or imported files
+  that belong to no download. That is the user's own content, not a leak, and the backstop
+  keeps it. A bulk Search the user starts counts too, which leaves a narrow gap (below);
 - the grab provenance cannot be established (History lookup failure, missing import or grab
   rows, singles the plugin unmonitored before the History audit existed);
-- the user re-monitored the single (it is then protected from further unmonitors and deletes);
+- the user re-monitored the single (its latest plugin row is `UserRemonitor`), or it is
+  monitored again, by the user or by Lidarr's artist-add monitoring, while its latest plugin
+  row is still `Unmonitor`. Either protects it from unmonitors and deletes while it holds;
 - a delete fails.
+
+Files are cleaned against the user's intent in one known case: if the user's own grab fails,
+Lidarr re-searches automatically (`ReleaseSource=Search`) and the re-download is cleaned.
 
 Wasted bandwidth is reduced, not eliminated: a download that was already in flight, or that
 one of the paths above starts anyway, still downloads.

@@ -42,10 +42,11 @@ namespace NzbDrone.Core.Plugins;
 /// conditional, not absolute: when the import-time cleanup (Connect entry) or the scheduled
 /// scan (off by default) is enabled, files that arrive for a redundant single are cleaned if
 /// the single was left monitored because a download was in flight, or if the files came from
-/// an automatic grab that raced the plugin's unmonitor. Files stay when a delete fails, when
-/// the cleanup rules or the History provenance lookup do not clear them, and when the user
-/// fetched the release deliberately after the unmonitor (that is the user's own download, not
-/// a leak). See the two guards below and docs/eager-unmonitor.md.
+/// an automatic grab (whenever it ran) or a user grab that predates the plugin's unmonitor.
+/// Files stay when a delete fails, when the cleanup rules or the History provenance lookup do
+/// not clear them, when the single is monitored again, and when the user fetched the release
+/// through interactive search or a Search they started after the unmonitor (that is the user's
+/// own download, not a leak). See the two guards below and docs/eager-unmonitor.md.
 /// A grab-time hook (NotificationBase.OnGrab) is deliberately NOT used: notifications fire
 /// after Lidarr has already sent the download to the client, and unmonitoring there would
 /// race the in-flight download.
@@ -54,9 +55,10 @@ namespace NzbDrone.Core.Plugins;
 /// - A single with a download in the download client's queue or in Lidarr's tracked downloads
 ///   (IInFlightReleaseProbe, a read-only view of those and of recent grab history) stays monitored; the
 ///   import-time self-check cleans it once the files land.
-/// - A single the user re-monitored after the plugin unmonitored it is never unmonitored again.
-///   The explicit re-monitor (an AlbumEditedEvent from the UI/API monitoring toggle) is recorded
-///   as a UserRemonitor History row, which the cleanup paths also honour.
+/// - A single the user re-monitored after the plugin unmonitored it is not unmonitored again
+///   while that holds. The explicit re-monitor (an AlbumEditedEvent from the UI/API monitoring
+///   toggle) is recorded as a UserRemonitor History row, which the cleanup paths also honour;
+///   a monitored single whose latest plugin row is still Unmonitor is protected the same way.
 /// </summary>
 public interface IEagerSingleUnmonitorService
 {
