@@ -27,6 +27,7 @@ public class SingleFolderCleanupTests : IDisposable
     private readonly string _singleFolder;
     private readonly RecordingRecycleBin _recycleBin;
     private readonly MediaFileServiceProxy _mediaFiles;
+    private readonly TrackServiceProxy _tracks;
     private readonly HistoryRepositoryProxy _history;
     private readonly MemoryTarget _logTarget = new() { Layout = "${level}|${message}" };
     private readonly SingleFolderCleanup _cleanup;
@@ -40,6 +41,7 @@ public class SingleFolderCleanupTests : IDisposable
 
         _recycleBin = new RecordingRecycleBin(Path.Combine(_root, "Recycle"));
         _mediaFiles = (MediaFileServiceProxy)(object)DispatchProxy.Create<IMediaFileService, MediaFileServiceProxy>();
+        _tracks = (TrackServiceProxy)(object)DispatchProxy.Create<ITrackService, TrackServiceProxy>();
         _history = (HistoryRepositoryProxy)(object)DispatchProxy.Create<IHistoryRepository, HistoryRepositoryProxy>();
 
         var factory = new LogFactory();
@@ -51,6 +53,7 @@ public class SingleFolderCleanupTests : IDisposable
             new TestDiskProvider(),
             _recycleBin,
             (IMediaFileService)(object)_mediaFiles,
+            (ITrackService)(object)_tracks,
             (IHistoryRepository)(object)_history,
             factory.GetLogger("test"));
     }
@@ -71,19 +74,19 @@ public class SingleFolderCleanupTests : IDisposable
     public void RemoveLeftovers_RecognizedSidecars_AreRecycledNextToTheAudioAndFolderRemoved()
     {
         var deleted = DeletedAudio(_singleFolder, "01 Burn the Witch.flac");
-        Touch(_singleFolder, "album.nfo", "cover.jpg", "Folder.PNG", "01 Burn the Witch.lrc", "playlist.m3u8", ".DS_Store");
+        Touch(_singleFolder, "album.nfo", "cover.jpg", "Folder.PNG", "01 Burn the Witch.lrc", ".DS_Store");
 
         _cleanup.RemoveLeftovers(Artist(), Single(), deleted);
 
         Assert.False(Directory.Exists(_singleFolder));
         Assert.True(Directory.Exists(Path.Combine(_artistPath, "Single")));
-        Assert.Equal(6, _recycleBin.Deleted.Count);
+        Assert.Equal(5, _recycleBin.Deleted.Count);
 
         // MediaFileDeletionService: GetParentFolder(artist.Path).GetRelativePath(GetParentFolder(audio)).
         var audioSubfolder = Path.Combine("PVRIS", "Single", "(2024) Burn the Witch");
         Assert.All(_recycleBin.Deleted, d => Assert.Equal(audioSubfolder, d.Subfolder));
         Assert.True(File.Exists(Path.Combine(_recycleBin.Root, audioSubfolder, "cover.jpg")));
-        Assert.Contains(Logs(), l => l.Contains("folder removed", StringComparison.Ordinal) && l.Contains("recycledSidecars=6", StringComparison.Ordinal));
+        Assert.Contains(Logs(), l => l.Contains("folder removed", StringComparison.Ordinal) && l.Contains("recycledSidecars=5", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -104,6 +107,9 @@ public class SingleFolderCleanupTests : IDisposable
     [InlineData("notes.txt", "unrecognized-files")]
     [InlineData("back.jpg", "unrecognized-files")]
     [InlineData("playlist.pls", "unrecognized-files")]
+    [InlineData("playlist.m3u", "unrecognized-files")]
+    [InlineData("playlist.m3u8", "unrecognized-files")]
+    [InlineData("Favourites.M3U8", "unrecognized-files")]
     [InlineData(".my-hidden-notes", "unrecognized-files")]
     [InlineData("02 Bonus.mp3", "untracked-audio")]
     public void RemoveLeftovers_UnrecognizedContent_KeepsFolderAndEveryFile(string userFile, string reason)
@@ -228,6 +234,7 @@ public class SingleFolderCleanupTests : IDisposable
         Directory.CreateDirectory(cd2);
         Touch(release, "folder.jpg", "album.nfo");
         Touch(cd1, "01 Burn the Witch.lrc");
+        _tracks.Tracks = TwoDiscTracks();
         var deleted = DeletedAudio(cd2, "01 Remix.flac").Concat(DeletedAudio(cd1, "01 Burn the Witch.flac")).ToList();
 
         _cleanup.RemoveLeftovers(Artist(), Single(), deleted);
@@ -249,6 +256,7 @@ public class SingleFolderCleanupTests : IDisposable
         Directory.CreateDirectory(cd2);
         Touch(release, "folder.jpg");
         Touch(cd1, "making-of.mkv");
+        _tracks.Tracks = TwoDiscTracks();
         var deleted = DeletedAudio(cd1, "01 Burn the Witch.flac").Concat(DeletedAudio(cd2, "01 Remix.flac")).ToList();
 
         _cleanup.RemoveLeftovers(Artist(), Single(), deleted);
@@ -267,11 +275,69 @@ public class SingleFolderCleanupTests : IDisposable
         var cd2 = Path.Combine(release, "CD 02");
         Directory.CreateDirectory(cd2);
         Touch(release, "cover.jpg");
+        _tracks.Tracks = TwoDiscTracks();
         var deleted = DeletedAudio(release, "01 Burn the Witch.flac").Concat(DeletedAudio(cd2, "01 Remix.flac")).ToList();
 
         _cleanup.RemoveLeftovers(Artist(), Single(), deleted);
 
         Assert.Equal(new[] { cd2, release }, RemovedFolders());
+    }
+
+    [Fact]
+    public void RemoveLeftovers_SiblingFoldersOfASingleDiscSingle_DoNotBringInTheContainer()
+    {
+        // Two audio folders under Artist/Singles (a renamed album folder, or several cycles combined)
+        // are not discs of one release: the container's own files are not the single's.
+        var container = Path.Combine(_artistPath, "Singles");
+        var first = Path.Combine(container, "(2024) Burn the Witch");
+        var second = Path.Combine(container, "(2024) Burn the Witch (Remastered)");
+        Directory.CreateDirectory(first);
+        Directory.CreateDirectory(second);
+        Touch(container, "folder.jpg", "artist.nfo");
+        Touch(first, "cover.jpg");
+        _tracks.Tracks = new List<Track> { new() { MediumNumber = 1 }, new() { MediumNumber = 1 } };
+        var deleted = DeletedAudio(first, "01 Burn the Witch.flac").Concat(DeletedAudio(second, "01 Burn the Witch.flac")).ToList();
+
+        _cleanup.RemoveLeftovers(Artist(), Single(), deleted);
+
+        Assert.Equal(new[] { first, second }.OrderBy(f => f, StringComparer.Ordinal), RemovedFolders().OrderBy(f => f, StringComparer.Ordinal));
+        Assert.True(Directory.Exists(container));
+        Assert.True(File.Exists(Path.Combine(container, "folder.jpg")));
+        Assert.True(File.Exists(Path.Combine(container, "artist.nfo")));
+        Assert.DoesNotContain(_recycleBin.Deleted, d => Path.GetDirectoryName(d.Path) == container);
+    }
+
+    [Fact]
+    public void RemoveLeftovers_SiblingFoldersWithNoTrackData_DoNotBringInTheParent()
+    {
+        var container = Path.Combine(_artistPath, "2020");
+        var first = Path.Combine(container, "A");
+        var second = Path.Combine(container, "B");
+        Directory.CreateDirectory(first);
+        Directory.CreateDirectory(second);
+        Touch(container, "folder.jpg");
+
+        _cleanup.RemoveLeftovers(Artist(), Single(), DeletedAudio(first, "01.flac").Concat(DeletedAudio(second, "01.flac")).ToList());
+
+        Assert.True(File.Exists(Path.Combine(container, "folder.jpg")));
+        Assert.DoesNotContain(RemovedFolders(), f => f == container);
+    }
+
+    [Fact]
+    public void RemoveLeftovers_MultiDiscFoldersNotDirectChildrenOfOneParent_DoNotBringInAParent()
+    {
+        // Two discs, but the audio folders do not share a parent: nothing is inferred above them.
+        var cd1 = Path.Combine(_singleFolder, "CD 01");
+        var cd2 = Path.Combine(_singleFolder, "Extra", "CD 02");
+        Directory.CreateDirectory(cd1);
+        Directory.CreateDirectory(cd2);
+        Touch(_singleFolder, "folder.jpg");
+        _tracks.Tracks = TwoDiscTracks();
+
+        _cleanup.RemoveLeftovers(Artist(), Single(), DeletedAudio(cd1, "01.flac").Concat(DeletedAudio(cd2, "01.flac")).ToList());
+
+        Assert.Equal(new[] { cd2, cd1 }.OrderBy(f => f, StringComparer.Ordinal), RemovedFolders().OrderBy(f => f, StringComparer.Ordinal));
+        Assert.True(File.Exists(Path.Combine(_singleFolder, "folder.jpg")));
     }
 
     // ============================================================
@@ -417,6 +483,9 @@ public class SingleFolderCleanupTests : IDisposable
     private static T Stub<T>()
         where T : class => DispatchProxy.Create<T, UnusedProxy>();
 
+    private static List<Track> TwoDiscTracks() =>
+        new() { new Track { MediumNumber = 1 }, new Track { MediumNumber = 2 } };
+
     private static List<TrackFile> DeletedAudio(string folder, string name) =>
         new() { new TrackFile { Id = 1, Path = Path.Combine(folder, name) } };
 
@@ -514,6 +583,21 @@ public class SingleFolderCleanupTests : IDisposable
                 // Lidarr's MediaFileRepository matches on the path plus one trailing separator.
                 var basePath = ((string)args![0]!).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
                 return Tracked.Where(f => f.Path.StartsWith(basePath, StringComparison.Ordinal)).ToList();
+            }
+
+            throw new NotSupportedException(targetMethod?.Name);
+        }
+    }
+
+    public class TrackServiceProxy : DispatchProxy
+    {
+        public List<Track> Tracks { get; set; } = new();
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            if (targetMethod?.Name == nameof(ITrackService.GetTracksByAlbum))
+            {
+                return Tracks;
             }
 
             throw new NotSupportedException(targetMethod?.Name);

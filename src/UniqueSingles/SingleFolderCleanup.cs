@@ -13,7 +13,7 @@ namespace NzbDrone.Core.Plugins;
 
 /// <summary>
 /// Removes what is left of a redundant single's folder after its audio files were deleted:
-/// recognized sidecar files (cover art, NFO, lyrics, playlists, OS metadata) and then the empty
+/// recognized sidecar files (cover art, NFO, lyrics, OS metadata) and then the empty
 /// folder itself. See docs/single-folder-cleanup.md for the allowlist, the guards, and what the
 /// stranded-folder sweep can and cannot attribute.
 /// </summary>
@@ -63,13 +63,15 @@ public sealed class SingleFolderCleanup : ISingleFolderCleanup
         ".webp",
     };
 
-    /// <summary>Extensions that are metadata about the release, whatever the file is called.</summary>
+    /// <summary>
+    /// Extensions that are metadata about the release, whatever the file is called. Playlists
+    /// (.m3u, .m3u8, .pls) are deliberately absent: they are usually made by the user, not by
+    /// Lidarr, and removal is permanent when no recycle bin is set.
+    /// </summary>
     private static readonly HashSet<string> SidecarExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".nfo",
         ".lrc",
-        ".m3u",
-        ".m3u8",
     };
 
     /// <summary>Folder metadata the operating system writes on its own.</summary>
@@ -90,6 +92,7 @@ public sealed class SingleFolderCleanup : ISingleFolderCleanup
     private readonly IDiskProvider _diskProvider;
     private readonly IRecycleBinProvider _recycleBinProvider;
     private readonly IMediaFileService _mediaFileService;
+    private readonly ITrackService _trackService;
     private readonly IHistoryRepository _history;
     private readonly Logger _logger;
 
@@ -97,12 +100,14 @@ public sealed class SingleFolderCleanup : ISingleFolderCleanup
         IDiskProvider diskProvider,
         IRecycleBinProvider recycleBinProvider,
         IMediaFileService mediaFileService,
+        ITrackService trackService,
         IHistoryRepository history,
         Logger logger)
     {
         _diskProvider = diskProvider ?? throw new ArgumentNullException(nameof(diskProvider));
         _recycleBinProvider = recycleBinProvider ?? throw new ArgumentNullException(nameof(recycleBinProvider));
         _mediaFileService = mediaFileService ?? throw new ArgumentNullException(nameof(mediaFileService));
+        _trackService = trackService ?? throw new ArgumentNullException(nameof(trackService));
         _history = history ?? throw new ArgumentNullException(nameof(history));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -192,7 +197,11 @@ public sealed class SingleFolderCleanup : ISingleFolderCleanup
         List<string> folders;
         try
         {
-            folders = FoldersToClean(deletedAudioPaths);
+            var multiDisc = (_trackService.GetTracksByAlbum(single.Id) ?? new List<Track>())
+                .Select(t => t.MediumNumber)
+                .Distinct()
+                .Count() > 1;
+            folders = FoldersToClean(deletedAudioPaths, multiDisc);
         }
         catch (Exception ex)
         {
@@ -229,10 +238,13 @@ public sealed class SingleFolderCleanup : ISingleFolderCleanup
     /// <summary>
     /// The folders that held the single's audio, deepest first so an inner disc folder
     /// (Release/CD1) is gone before its parent is checked. When the audio sat in two or more
-    /// sibling folders (Release/CD1, Release/CD2), their shared parent is the release folder and
-    /// is cleaned last. Nothing else above an audio folder is ever touched.
+    /// sibling folders (Release/CD1, Release/CD2) and the single's tracks span more than one disc,
+    /// their shared parent is the release folder and is cleaned last. Without the disc evidence
+    /// two audio folders under a common parent are just two folders (Artist/Singles/ or a renamed
+    /// album folder), and the parent is not the release's. Nothing else above an audio folder is
+    /// ever touched.
     /// </summary>
-    private static List<string> FoldersToClean(IEnumerable<string> deletedAudioPaths)
+    private static List<string> FoldersToClean(IEnumerable<string> deletedAudioPaths, bool multiDisc)
     {
         var comparer = StringComparer.FromComparison(DiskProviderBase.PathStringComparison);
         var folders = deletedAudioPaths
@@ -243,7 +255,7 @@ public sealed class SingleFolderCleanup : ISingleFolderCleanup
             .Distinct(comparer)
             .ToList();
 
-        if (folders.Count >= 2)
+        if (multiDisc && folders.Count >= 2)
         {
             var parents = folders.Select(f => f.GetParentPath()).Distinct(comparer).ToList();
             if (parents.Count == 1 && parents[0].IsNotNullOrWhiteSpace() && !folders.Contains(parents[0]!, comparer))
