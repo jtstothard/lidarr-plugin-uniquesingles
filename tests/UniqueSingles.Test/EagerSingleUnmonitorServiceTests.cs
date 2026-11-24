@@ -513,6 +513,143 @@ public class EagerSingleUnmonitorServiceTests
         Assert.Single(historyRecorder.Unmonitors);
     }
 
+    // ── Leak window: in-flight downloads and user re-monitors ────────────────
+
+    [Fact]
+    public void AlbumInfoRefreshedEvent_RedundantSingleWithDownloadInFlight_StaysMonitored()
+    {
+        // A single already grabbed/downloading is file-less right now. Unmonitoring it would
+        // let the download import into an unmonitored release that nothing cleans.
+        var artist = Artist();
+        var album = DownloadedAlbum();
+        var single = Single(200, "Hit Single", monitored: true);
+        var probe = new SingleCleanupServiceTests.StubInFlightProbe();
+        probe.InFlightAlbumIds.Add(single.Id);
+        var (albumService, _, historyRecorder, service) = Setup(
+            artist, album, single,
+            albumTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 11) },
+            singleTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 0) },
+            inFlightProbe: probe);
+
+        service.Handle(new AlbumInfoRefreshedEvent(artist, new List<Album> { single }, new List<Album>(), new List<Album>()));
+        service.Handle(new AlbumUpdatedEvent(single));
+
+        Assert.True(single.Monitored);
+        Assert.Empty(albumService.SetMonitoredCalls);
+        Assert.Empty(historyRecorder.Unmonitors);
+        Assert.Contains(single.Id, probe.Queried);
+    }
+
+    [Fact]
+    public void AlbumEditedEvent_UserRemonitorsPluginUnmonitoredSingle_RecordsOverrideAndNeverUnmonitorsAgain()
+    {
+        var artist = Artist();
+        var album = DownloadedAlbum();
+        var single = Single(200, "Hit Single", monitored: true);
+        single.Artist = artist;
+        var (albumService, _, historyRecorder, service) = Setup(
+            artist, album, single,
+            albumTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 11) },
+            singleTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 0) });
+        historyRecorder.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
+
+        // SetAlbumMonitored(id, true) from the UI/API toggle publishes (album, album).
+        service.Handle(new AlbumEditedEvent(single, single));
+        service.Handle(new AlbumUpdatedEvent(single));
+        service.Handle(new AlbumInfoRefreshedEvent(artist, new List<Album> { single }, new List<Album>(), new List<Album>()));
+
+        Assert.True(single.Monitored);
+        Assert.Empty(albumService.SetMonitoredCalls);
+        Assert.Empty(historyRecorder.Unmonitors);
+        Assert.Equal(new[] { single.Id }, historyRecorder.UserRemonitors);
+    }
+
+    [Fact]
+    public void AlbumEditedEvent_UpdateAlbumRemonitorTransition_RecordsUserOverride()
+    {
+        // UpdateAlbum (album editor) publishes (updated, stored): false -> true is a re-monitor.
+        var artist = Artist();
+        var album = DownloadedAlbum();
+        var single = Single(200, "Hit Single", monitored: true);
+        single.Artist = artist;
+        var stored = Single(200, "Hit Single", monitored: false);
+        var (albumService, _, historyRecorder, service) = Setup(
+            artist, album, single,
+            albumTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 11) },
+            singleTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 0) });
+        historyRecorder.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
+
+        service.Handle(new AlbumEditedEvent(single, stored));
+
+        Assert.True(single.Monitored);
+        Assert.Empty(albumService.SetMonitoredCalls);
+        Assert.Equal(new[] { single.Id }, historyRecorder.UserRemonitors);
+    }
+
+    [Fact]
+    public void AlbumUpdatedEvent_UserRemonitoredSingle_StaysMonitored()
+    {
+        var artist = Artist();
+        var album = DownloadedAlbum();
+        var single = Single(200, "Hit Single", monitored: true);
+        single.Artist = artist;
+        var (albumService, _, historyRecorder, service) = Setup(
+            artist, album, single,
+            albumTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 11) },
+            singleTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 0) });
+        historyRecorder.Provenance[single.Id] = UnmonitorProvenance.UserRemonitored;
+
+        service.Handle(new AlbumUpdatedEvent(single));
+
+        Assert.True(single.Monitored);
+        Assert.Empty(albumService.SetMonitoredCalls);
+    }
+
+    [Fact]
+    public void AlbumUpdatedEvent_PluginUnmonitoredSingleRemonitoredByLidarrBulkWrite_IsUnmonitoredAgain()
+    {
+        // AlbumMonitoredService (artist add) overwrites monitored state with UpdateMany and
+        // publishes no AlbumEditedEvent. That is not the user, so the release is not taken
+        // out of the plugin's hands.
+        var artist = Artist();
+        var album = DownloadedAlbum();
+        var single = Single(200, "Hit Single", monitored: true);
+        single.Artist = artist;
+        var (albumService, _, historyRecorder, service) = Setup(
+            artist, album, single,
+            albumTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 11) },
+            singleTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 0) });
+        historyRecorder.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
+
+        service.Handle(new AlbumUpdatedEvent(single));
+
+        Assert.False(single.Monitored);
+        Assert.Equal(new[] { (single.Id, false) }, albumService.SetMonitoredCalls);
+        Assert.Empty(historyRecorder.UserRemonitors);
+    }
+
+    [Fact]
+    public void AlbumEditedEvent_NonMonitoringEditOfMonitoredSingle_IsNotTreatedAsUserRemonitor()
+    {
+        // UpdateAlbum passes the stored album as OldAlbum; an edit that leaves an already
+        // monitored album monitored is not a re-monitor.
+        var artist = Artist();
+        var album = DownloadedAlbum();
+        var single = Single(200, "Hit Single", monitored: true);
+        single.Artist = artist;
+        var stored = Single(200, "Hit Single", monitored: true);
+        var (albumService, _, historyRecorder, service) = Setup(
+            artist, album, single,
+            albumTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 11) },
+            singleTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 0) });
+        historyRecorder.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
+
+        service.Handle(new AlbumEditedEvent(single, stored));
+
+        Assert.Empty(historyRecorder.UserRemonitors);
+        Assert.Equal(new[] { (single.Id, false) }, albumService.SetMonitoredCalls);
+    }
+
     // ── Test seams ───────────────────────────────────────────────────────────
 
     private static (RecordingAlbumService AlbumService, RecordingTrackService TrackService, RecordingHistoryRecorder HistoryRecorder, EagerSingleUnmonitorService Service) Setup(
@@ -524,7 +661,8 @@ public class EagerSingleUnmonitorServiceTests
         Album[]? extraAlbums = null,
         UniqueSinglesSettings? notificationSettings = null,
         UniqueSinglesSettings? metadataSettings = null,
-        bool throwOnGetArtist = false)
+        bool throwOnGetArtist = false,
+        IInFlightReleaseProbe? inFlightProbe = null)
     {
         var albums = new List<Album> { comparisonAlbum, single }.Concat(extraAlbums ?? Array.Empty<Album>()).ToArray();
         var albumService = new RecordingAlbumService(albums);
@@ -540,7 +678,7 @@ public class EagerSingleUnmonitorServiceTests
             ? new List<MetadataDefinition>()
             : new List<MetadataDefinition> { new() { Implementation = nameof(UniqueSinglesScanTask), Settings = metadataSettings } };
 
-        var service = CreateService(albumService, trackService, historyRecorder, artist, notificationDefinitions, metadataDefinitions, throwOnGetArtist);
+        var service = CreateService(albumService, trackService, historyRecorder, artist, notificationDefinitions, metadataDefinitions, throwOnGetArtist, inFlightProbe);
         return (albumService, trackService, historyRecorder, service);
     }
 
@@ -551,7 +689,8 @@ public class EagerSingleUnmonitorServiceTests
         Artist artist,
         List<NotificationDefinition> notificationDefinitions,
         List<MetadataDefinition> metadataDefinitions,
-        bool throwOnGetArtist = false)
+        bool throwOnGetArtist = false,
+        IInFlightReleaseProbe? inFlightProbe = null)
     {
         var logger = new TestLogger();
         var notificationFactory = new StubNotificationFactory(notificationDefinitions);
@@ -563,6 +702,7 @@ public class EagerSingleUnmonitorServiceTests
             trackService,
             new LookupArtistService(artist, throwOnGetArtist),
             historyRecorder,
+            inFlightProbe ?? new SingleCleanupServiceTests.StubInFlightProbe(),
             new Lazy<INotificationFactory>(() => notificationFactory),
             new Lazy<IMetadataFactory>(() => metadataFactory),
             logger.Logger);
@@ -797,6 +937,17 @@ public class EagerSingleUnmonitorServiceTests
     {
         public bool ThrowOnRecord { get; set; }
         public List<(int ArtistId, int AlbumId, string Reason)> Unmonitors { get; } = new();
+        public List<int> UserRemonitors { get; } = new();
+        public Dictionary<int, UnmonitorProvenance> Provenance { get; } = new();
+
+        public UnmonitorProvenance GetProvenance(int albumId) =>
+            Provenance.TryGetValue(albumId, out var provenance) ? provenance : UnmonitorProvenance.None;
+
+        public void RecordUserRemonitor(Artist artist, Album single)
+        {
+            UserRemonitors.Add(single.Id);
+            Provenance[single.Id] = UnmonitorProvenance.UserRemonitored;
+        }
 
         public void RecordUnmonitor(Artist artist, Album single, string reason)
         {

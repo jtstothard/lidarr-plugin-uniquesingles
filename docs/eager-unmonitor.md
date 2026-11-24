@@ -55,17 +55,49 @@ Protections unchanged from the cleanup path:
 - Fail-safe everywhere: missing tracks, lookup failures, or artist-resolution failures keep
   the single monitored.
 - The service takes no command-queue, search, download, or deletion dependencies, so it can
-  never trigger a search, grab, or file deletion. `SetAlbumMonitored` publishes
+  never trigger a search, grab, or file deletion. Its only view of downloads is the read-only
+  `IInFlightReleaseProbe` (below). `SetAlbumMonitored` publishes
   `AlbumEditedEvent(album, album)` whose Lidarr handler only reacts to release-monitoring
   changes, which this call does not make.
+
+## Downloads in flight and the leak backstop
+
+A single that is already grabbed, downloading, or awaiting import has no files yet, so it
+looks like any other file-less redundant single. Unmonitoring it would let the download
+import into an unmonitored release. Every file-less unmonitor (the eager service, and the
+Tier-1/Tier-2 no-files path in the scan and import cleanup) therefore first asks
+`LidarrInFlightReleaseProbe`, which reads two things without issuing commands:
+
+- Lidarr's tracked-download cache (what Activity → Queue shows). Any state except Imported,
+  Ignored, DownloadFailed and DownloadFailedPending counts as in flight.
+- Grabbed History rows newer than 6 hours that are not tracked yet and have no
+  DownloadImported/DownloadFailed/DownloadIgnored row. This covers the few seconds between a
+  grab and Lidarr's debounced queue refresh, and the empty cache after a restart.
+
+An in-flight single stays monitored (`reason=download-in-flight`), and the import-time
+self-check cleans its files once they land. Delay-profile pending releases are not counted:
+RSS sync re-checks them against the monitored flag, so unmonitoring cancels them.
+
+Some downloads still get past the unmonitor (a grab dispatched just before it, or a Lidarr
+search that ignores the monitored flag). The cleanup paths therefore no longer skip every
+unmonitored release. A release whose latest plugin History row is the plugin's own
+`Unmonitor` and which now has downloaded files is evaluated under the normal cleanup rules
+(Tier-3 action, exact-audio, #17 protection) and its files deleted when they are redundant
+(`reason=plugin-unmonitored-has-files`). A release with no plugin row was unmonitored by the
+user or by Lidarr and is never touched.
+
+If the user re-monitors a single the plugin unmonitored (the album monitoring toggle or
+the album editor, which publish `AlbumEditedEvent`), the eager service records a
+`UserRemonitor` History row. From then on neither the eager service nor the cleanup paths
+unmonitor that release or delete its files. Lidarr's own bulk monitoring writes
+(`AlbumMonitoredService` on artist add) publish no edit event and do not count as the user.
 
 ## Why not a grab-time hook (`NotificationBase.OnGrab`)
 
 Lidarr notifications fire after `DownloadService` has already sent the download to the
 client; a notification cannot veto a grab, so `OnGrab` cannot *prevent* a download.
-Unmonitoring there would also leak files: the import-time cleanup deliberately skips
-already-unmonitored releases (`reason=already-unmonitored`), so a single unmonitored at
-grab time would import and keep its files forever. The lifecycle hooks above run strictly
+Unmonitoring there would also race the download into an unmonitored release, which only the
+leak backstop above would then clean. The lifecycle hooks above run strictly
 earlier than every grab decision (RSS sync reads monitoring state from the database at
 decision time; interactive and queued searches execute only after the refresh/add/monitor
 operation that triggers our synchronous handlers has completed).

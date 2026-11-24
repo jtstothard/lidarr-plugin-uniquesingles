@@ -924,7 +924,8 @@ public partial class SingleCleanupServiceTests
         RecordingMediaFileService mediaFileService,
         RecordingDeleteMediaFiles deleteMediaFiles,
         RecordingLogger? logger = null,
-        RecordingHistoryRecorder? historyRecorder = null)
+        RecordingHistoryRecorder? historyRecorder = null,
+        StubInFlightProbe? inFlightProbe = null)
     {
         var loggerHarness = logger ?? new RecordingLogger();
         return new SingleCleanupService(
@@ -933,6 +934,7 @@ public partial class SingleCleanupServiceTests
             mediaFileService,
             deleteMediaFiles,
             historyRecorder ?? new RecordingHistoryRecorder(),
+            inFlightProbe ?? new StubInFlightProbe(),
             loggerHarness.Logger);
     }
 
@@ -1256,6 +1258,13 @@ public partial class SingleCleanupServiceTests
     {
         public bool ThrowOnRecord { get; set; }
         public List<(int ArtistId, int AlbumId, string Reason)> Unmonitors { get; } = new();
+        public List<int> UserRemonitors { get; } = new();
+        public Dictionary<int, UnmonitorProvenance> Provenance { get; } = new();
+
+        public UnmonitorProvenance GetProvenance(int albumId) =>
+            Provenance.TryGetValue(albumId, out var provenance) ? provenance : UnmonitorProvenance.None;
+
+        public void RecordUserRemonitor(Artist artist, Album single) => UserRemonitors.Add(single.Id);
 
         public void RecordUnmonitor(Artist artist, Album single, string reason)
         {
@@ -1265,6 +1274,20 @@ public partial class SingleCleanupServiceTests
             }
 
             Unmonitors.Add((artist.Id, single.Id, reason ?? string.Empty));
+        }
+    }
+
+    internal sealed class StubInFlightProbe : IInFlightReleaseProbe
+    {
+        public HashSet<int> InFlightAlbumIds { get; } = new();
+        public List<int> Queried { get; } = new();
+
+        public bool IsInFlight(Album release, out string detail)
+        {
+            Queried.Add(release.Id);
+            var inFlight = InFlightAlbumIds.Contains(release.Id);
+            detail = inFlight ? "tracked-download state=Downloading downloadId=test" : "none";
+            return inFlight;
         }
     }
 

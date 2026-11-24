@@ -151,11 +151,71 @@ public class ExactAudioFollowupsTests
         Assert.Empty(repository.Inserted);
     }
 
+    [Theory]
+    [InlineData(new[] { "Unmonitor" }, UnmonitorProvenance.PluginUnmonitored)]
+    [InlineData(new[] { "Unmonitor", "UserRemonitor" }, UnmonitorProvenance.UserRemonitored)]
+    [InlineData(new[] { "UserRemonitor", "Unmonitor" }, UnmonitorProvenance.PluginUnmonitored)]
+    [InlineData(new string[0], UnmonitorProvenance.None)]
+    public void HistoryRecorder_Provenance_FollowsLatestPluginRow(string[] actions, UnmonitorProvenance expected)
+    {
+        using var loggerHarness = new LoggerHarness();
+        var repository = HistoryRepositoryProxy.Create();
+        var start = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (var i = 0; i < actions.Length; i++)
+        {
+            var row = new EntityHistory { Id = i + 1, AlbumId = 200, Date = start.AddHours(i) };
+            row.Data["Plugin"] = "UniqueSingles";
+            row.Data["Action"] = actions[i];
+            repository.Rows.Add(row);
+        }
+
+        // Rows from Lidarr or other sources never count as plugin provenance.
+        var foreign = new EntityHistory { Id = 99, AlbumId = 200, Date = start.AddDays(1) };
+        foreign.Data["Action"] = "Unmonitor";
+        repository.Rows.Add(foreign);
+
+        var recorder = new UniqueSinglesHistoryRecorder(repository.AsRepository(), loggerHarness.Logger);
+
+        Assert.Equal(expected, recorder.GetProvenance(200));
+    }
+
+    [Fact]
+    public void HistoryRecorder_ProvenanceLookupFailure_IsUnknown()
+    {
+        using var loggerHarness = new LoggerHarness();
+        var repository = HistoryRepositoryProxy.Create();
+        repository.ThrowOnQuery = true;
+        var recorder = new UniqueSinglesHistoryRecorder(repository.AsRepository(), loggerHarness.Logger);
+
+        Assert.Equal(UnmonitorProvenance.Unknown, recorder.GetProvenance(200));
+    }
+
+    [Fact]
+    public void HistoryRecorder_RecordUserRemonitor_WritesAttributedRowThatOverridesUnmonitor()
+    {
+        using var loggerHarness = new LoggerHarness();
+        var repository = HistoryRepositoryProxy.Create();
+        var recorder = new UniqueSinglesHistoryRecorder(repository.AsRepository(), loggerHarness.Logger);
+        var artist = new Artist { Id = 42, Name = "Test Artist" };
+        var single = new Album { Id = 200, Title = "Single", AlbumType = "Single" };
+
+        recorder.RecordUnmonitor(artist, single, "redundant");
+        recorder.RecordUserRemonitor(artist, single);
+
+        Assert.Equal(new[] { "Unmonitor", "UserRemonitor" }, repository.Inserted.Select(r => r.Data["Action"]));
+        Assert.All(repository.Inserted, r => Assert.Equal("UniqueSingles", r.Data["Plugin"]));
+        Assert.Equal(UnmonitorProvenance.UserRemonitored, recorder.GetProvenance(200));
+    }
+
     public class HistoryRepositoryProxy : DispatchProxy
     {
         public List<EntityHistory> Inserted { get; } = new();
 
+        public List<EntityHistory> Rows { get; } = new();
+
         public bool ThrowOnInsert { get; set; }
+
+        public bool ThrowOnQuery { get; set; }
 
         public IHistoryRepository AsRepository() => (IHistoryRepository)(object)this;
 
@@ -175,8 +235,23 @@ public class ExactAudioFollowupsTests
                 }
 
                 var history = (EntityHistory)args![0]!;
+                history.Id = Rows.Count + 1;
                 Inserted.Add(history);
+                Rows.Add(history);
                 return history;
+            }
+
+            if (method.Name == "GetByAlbum")
+            {
+                if (ThrowOnQuery)
+                {
+                    throw new InvalidOperationException("history query failed");
+                }
+
+                return Rows
+                    .Where(h => h.AlbumId == (int)args![0]!)
+                    .Where(h => args[1] == null || h.EventType == (EntityHistoryEventType)args[1]!)
+                    .ToList();
             }
 
             throw new NotSupportedException(method.Name);

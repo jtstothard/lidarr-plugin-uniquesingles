@@ -46,6 +46,7 @@ public class SingleCleanupService : ISingleCleanupService
     private readonly IMediaFileService _mediaFileService;
     private readonly IDeleteMediaFiles _deleteMediaFiles;
     private readonly ICleanupHistoryRecorder _historyRecorder;
+    private readonly IInFlightReleaseProbe _inFlightProbe;
     private readonly Logger _logger;
 
     public SingleCleanupService(
@@ -54,6 +55,7 @@ public class SingleCleanupService : ISingleCleanupService
         IMediaFileService mediaFileService,
         IDeleteMediaFiles deleteMediaFiles,
         ICleanupHistoryRecorder historyRecorder,
+        IInFlightReleaseProbe inFlightProbe,
         Logger logger)
     {
         _albumService = albumService ?? throw new ArgumentNullException(nameof(albumService));
@@ -61,6 +63,7 @@ public class SingleCleanupService : ISingleCleanupService
         _mediaFileService = mediaFileService ?? throw new ArgumentNullException(nameof(mediaFileService));
         _deleteMediaFiles = deleteMediaFiles ?? throw new ArgumentNullException(nameof(deleteMediaFiles));
         _historyRecorder = historyRecorder ?? throw new ArgumentNullException(nameof(historyRecorder));
+        _inFlightProbe = inFlightProbe ?? throw new ArgumentNullException(nameof(inFlightProbe));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -284,15 +287,25 @@ public class SingleCleanupService : ISingleCleanupService
         var unmonitorFailures = 0;
         var deleteFailures = 0;
 
+        // Leak backstop: a release the plugin unmonitored as redundant can still receive files
+        // (a grab already in flight, or a Lidarr search that ignores the monitored flag). Those
+        // files are evaluated under the normal cleanup rules instead of being skipped. Releases
+        // unmonitored by the user or by Lidarr (no plugin History row) stay untouched.
+        var pluginUnmonitored = false;
         if (!single.Monitored)
         {
-            _logger.Info(
-                "UniqueSingles cleanup skip: single already unmonitored. artistId={0} artist='{1}' singleId={2} single='{3}' reason=already-unmonitored",
-                artist.Id,
-                artist.Name,
-                single.Id,
-                single.Title);
-            return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
+            if (_historyRecorder.GetProvenance(single.Id) != UnmonitorProvenance.PluginUnmonitored)
+            {
+                _logger.Info(
+                    "UniqueSingles cleanup skip: single already unmonitored. artistId={0} artist='{1}' singleId={2} single='{3}' reason=already-unmonitored",
+                    artist.Id,
+                    artist.Name,
+                    single.Id,
+                    single.Title);
+                return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
+            }
+
+            pluginUnmonitored = true;
         }
 
         List<Track> singleTracks;
@@ -313,6 +326,28 @@ public class SingleCleanupService : ISingleCleanupService
         }
 
         var downloadedSingleTracks = singleTracks.Where(t => t.HasFile).ToList();
+        if (pluginUnmonitored)
+        {
+            if (downloadedSingleTracks.Count == 0)
+            {
+                _logger.Info(
+                    "UniqueSingles cleanup skip: single already unmonitored. artistId={0} artist='{1}' singleId={2} single='{3}' reason=already-unmonitored",
+                    artist.Id,
+                    artist.Name,
+                    single.Id,
+                    single.Title);
+                return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
+            }
+
+            _logger.Info(
+                "UniqueSingles leak backstop: release the plugin unmonitored as redundant now has downloaded files; evaluating under normal cleanup rules. artistId={0} artist='{1}' singleId={2} single='{3}' downloadedTracks={4} reason=plugin-unmonitored-has-files",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title,
+                downloadedSingleTracks.Count);
+        }
+
         if (downloadedSingleTracks.Count == 0)
         {
             // Check if single is fully Tier-1 redundant (exact MBID matches) before skipping
@@ -326,6 +361,11 @@ public class SingleCleanupService : ISingleCleanupService
                     artist.Name,
                     single.Id,
                     single.Title);
+
+                if (!MayUnmonitorFilelessSingle(artist, single))
+                {
+                    return new CleanupResult(candidatesChecked, cleaned, 1, 0, 0, 0);
+                }
 
                 // Unmonitor but don't delete (no files to delete)
                 if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext,
@@ -359,6 +399,11 @@ public class SingleCleanupService : ISingleCleanupService
                         artist.Name,
                         single.Id,
                         single.Title);
+
+                    if (!MayUnmonitorFilelessSingle(artist, single))
+                    {
+                        return new CleanupResult(candidatesChecked, cleaned, 1, 0, 0, 0);
+                    }
 
                     if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext, filelessCheck))
                     {
@@ -453,10 +498,16 @@ public class SingleCleanupService : ISingleCleanupService
             }
         }
 
+        if (!pluginUnmonitored && IsUserRemonitored(artist, single))
+        {
+            return new CleanupResult(candidatesChecked, cleaned, 1, 0, 0, 0);
+        }
+
         if (cleanupReport != null && !RevalidateExactCleanup(artist, single, cleanupReport, options, null, null, out _))
             return new CleanupResult(1, 0, 1, 0, 0, 0);
 
-        if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext, check))
+        // A plugin-unmonitored release is already unmonitored and already has its audit row.
+        if (!pluginUnmonitored && !TryUnmonitorSingle(artist, single, comparisonAlbumContext, check))
         {
             unmonitorFailures = 1;
             return new CleanupResult(candidatesChecked, cleaned, 0, 0, unmonitorFailures, 0);
@@ -608,6 +659,11 @@ public class SingleCleanupService : ISingleCleanupService
                     comparisonAlbumContext?.Id,
                     comparisonAlbumContext?.Title);
 
+                if (!MayUnmonitorFilelessSingle(artist, single))
+                {
+                    return;
+                }
+
                 // Unmonitor but don't delete (no files to delete)
                 TryUnmonitorSingle(artist, single, comparisonAlbumContext,
                     new SingleRedundancyCheck(true, new List<MatchResult>(),
@@ -631,7 +687,7 @@ public class SingleCleanupService : ISingleCleanupService
         var check = TrackMatcher.CheckSingle(singleTracks, albumTracks);
         LogMatchDecision(artist, single, comparisonAlbumContext, check);
 
-        if (!check.IsRedundant)
+        if (!check.IsRedundant || IsUserRemonitored(artist, single))
         {
             return;
         }
@@ -851,6 +907,56 @@ public class SingleCleanupService : ISingleCleanupService
                 comparisonAlbumContext?.Title,
                 check.SummaryReason);
         }
+    }
+
+    /// <summary>
+    /// Gate for every file-less unmonitor (Tier-1 and Tier-2, scan and import). A single with a
+    /// grabbed, downloading, or awaiting-import release is file-less only until that download
+    /// imports; unmonitoring it now would land the files in an unmonitored release. It stays
+    /// monitored, so the import-time self-check cleans the files as a normal monitored single.
+    /// </summary>
+    private bool MayUnmonitorFilelessSingle(Artist artist, Album single)
+    {
+        if (IsUserRemonitored(artist, single))
+        {
+            return false;
+        }
+
+        if (_inFlightProbe.IsInFlight(single, out var detail))
+        {
+            _logger.Info(
+                "UniqueSingles unmonitor deferred: single has a download Lidarr can still import; it stays monitored so the import-time cleanup handles the files. artistId={0} artist='{1}' singleId={2} single='{3}' download='{4}' reason=download-in-flight",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title,
+                detail);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// True when the user took the release back after the plugin unmonitored it (or provenance
+    /// cannot be read). Such a release is never unmonitored or deleted by the plugin again.
+    /// </summary>
+    private bool IsUserRemonitored(Artist artist, Album single)
+    {
+        var provenance = _historyRecorder.GetProvenance(single.Id);
+        if (provenance != UnmonitorProvenance.UserRemonitored && provenance != UnmonitorProvenance.Unknown)
+        {
+            return false;
+        }
+
+        _logger.Info(
+            "UniqueSingles cleanup skip: user re-monitored this release after the plugin unmonitored it. artistId={0} artist='{1}' singleId={2} single='{3}' provenance={4} reason=user-remonitored",
+            artist.Id,
+            artist.Name,
+            single.Id,
+            single.Title,
+            provenance);
+        return true;
     }
 
     private bool TryUnmonitorSingle(Artist artist, Album single, Album? comparisonAlbumContext, SingleRedundancyCheck check)

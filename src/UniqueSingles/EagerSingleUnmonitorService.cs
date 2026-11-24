@@ -36,8 +36,15 @@ namespace NzbDrone.Core.Plugins;
 /// the album lifecycle operations — strictly before any queued refresh/search command can
 /// execute against the new monitoring state. A grab-time hook (NotificationBase.OnGrab) is
 /// deliberately NOT used: notifications fire after Lidarr has already sent the download to
-/// the client, and unmonitoring there would leak the in-flight file, because the import-time
-/// cleanup skips already-unmonitored releases.
+/// the client, and unmonitoring there would race the in-flight download.
+///
+/// Two further guards keep the unmonitor from leaking files:
+/// - A single with a grabbed, downloading, or awaiting-import download (IInFlightReleaseProbe,
+///   a read-only view of Lidarr's tracked downloads and grab history) stays monitored; the
+///   import-time self-check cleans it once the files land.
+/// - A single the user re-monitored after the plugin unmonitored it is never unmonitored again.
+///   The explicit re-monitor (an AlbumEditedEvent from the UI/API monitoring toggle) is recorded
+///   as a UserRemonitor History row, which the cleanup paths also honour.
 /// </summary>
 public interface IEagerSingleUnmonitorService
 {
@@ -62,6 +69,7 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
     private readonly ITrackService _trackService;
     private readonly IArtistService _artistService;
     private readonly ICleanupHistoryRecorder _historyRecorder;
+    private readonly IInFlightReleaseProbe _inFlightProbe;
     private readonly Lazy<INotificationFactory> _notificationFactory;
     private readonly Lazy<IMetadataFactory> _metadataFactory;
     private readonly Logger _logger;
@@ -75,6 +83,7 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
         ITrackService trackService,
         IArtistService artistService,
         ICleanupHistoryRecorder historyRecorder,
+        IInFlightReleaseProbe inFlightProbe,
         Lazy<INotificationFactory> notificationFactory,
         Lazy<IMetadataFactory> metadataFactory,
         Logger logger)
@@ -83,6 +92,7 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
         _trackService = trackService ?? throw new ArgumentNullException(nameof(trackService));
         _artistService = artistService ?? throw new ArgumentNullException(nameof(artistService));
         _historyRecorder = historyRecorder ?? throw new ArgumentNullException(nameof(historyRecorder));
+        _inFlightProbe = inFlightProbe ?? throw new ArgumentNullException(nameof(inFlightProbe));
         _notificationFactory = notificationFactory ?? throw new ArgumentNullException(nameof(notificationFactory));
         _metadataFactory = metadataFactory ?? throw new ArgumentNullException(nameof(metadataFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -133,9 +143,47 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
     /// (or the user) already unmonitored is skipped by the monitored gate. The unmonitor this
     /// service performs publishes AlbumEditedEvent with the persisted unmonitored state, so
     /// the re-entrant dispatch terminates immediately.
+    ///
+    /// An explicit re-monitor of a single the plugin unmonitored is the user taking it back: it
+    /// is recorded as a UserRemonitor History row and never evaluated again. Lidarr's own bulk
+    /// monitoring writes (AlbumMonitoredService on artist add) use UpdateMany, publish no
+    /// AlbumEditedEvent, and so are not mistaken for the user.
     /// </summary>
     public void Handle(AlbumEditedEvent message)
     {
+        try
+        {
+            if (IsExplicitRemonitor(message))
+            {
+                var album = message!.Album;
+                var provenance = _historyRecorder.GetProvenance(album.Id);
+                if (provenance == UnmonitorProvenance.PluginUnmonitored)
+                {
+                    var artist = ResolveArtist(album);
+                    if (artist != null)
+                    {
+                        _historyRecorder.RecordUserRemonitor(artist, album);
+                        _logger.Info(
+                            "UniqueSingles eager: user re-monitored a single the plugin unmonitored; it will not be unmonitored or deleted again. artistId={0} artist='{1}' singleId={2} single='{3}' reason=user-remonitored",
+                            artist.Id,
+                            artist.Name,
+                            album.Id,
+                            album.Title);
+                    }
+
+                    return;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn(
+                ex,
+                "UniqueSingles eager re-monitor check swallowed exception. albumId={0} reason=remonitor-check-failed",
+                message?.Album?.Id);
+            return;
+        }
+
         Evaluate(ResolveArtist(message?.Album), message?.Album, "album-edited");
     }
 
@@ -192,8 +240,8 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
         if (singleTracks.Any(t => t.HasFile))
         {
             // Releases with downloaded content stay owned by the import-time and scheduled
-            // cleanup paths, whose unmonitor is followed by file deletion. Unmonitoring here
-            // would leak those files, because cleanup skips already-unmonitored releases.
+            // cleanup paths, whose unmonitor is followed by file deletion under the full
+            // cleanup rules (exact-audio, Tier-3 action). This path never deletes.
             _logger.Info(
                 "UniqueSingles eager skip: single has downloaded content; cleanup path owns it. artistId={0} artist='{1}' singleId={2} single='{3}' reason=has-downloaded-content",
                 artist.Id,
@@ -220,6 +268,34 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
                 single.Title,
                 outcome,
                 check.SummaryReason);
+            return false;
+        }
+
+        var provenance = _historyRecorder.GetProvenance(single.Id);
+        if (provenance == UnmonitorProvenance.UserRemonitored || provenance == UnmonitorProvenance.Unknown)
+        {
+            _logger.Info(
+                "UniqueSingles eager keep: user re-monitored this single after the plugin unmonitored it. artistId={0} artist='{1}' singleId={2} single='{3}' provenance={4} reason=user-remonitored",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title,
+                provenance);
+            return false;
+        }
+
+        if (_inFlightProbe.IsInFlight(single, out var inFlightDetail))
+        {
+            // Unmonitoring now would land the download in an unmonitored release. Staying
+            // monitored lets the import-time self-check clean the files as usual.
+            _logger.Info(
+                "UniqueSingles eager keep: single has a download Lidarr can still import. artistId={0} artist='{1}' singleId={2} single='{3}' trigger={4} download='{5}' reason=download-in-flight",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title,
+                trigger,
+                inFlightDetail);
             return false;
         }
 
@@ -448,6 +524,23 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
                 album.Title);
             return null;
         }
+    }
+
+    /// <summary>
+    /// SetAlbumMonitored/SetMonitored publish the edited album as both Album and OldAlbum, and
+    /// only the monitoring toggle calls them; UpdateAlbum passes the stored album as OldAlbum,
+    /// so a re-monitor there is a false → true transition.
+    /// </summary>
+    private static bool IsExplicitRemonitor(AlbumEditedEvent? message)
+    {
+        var album = message?.Album;
+        if (album == null || !IsSingle(album) || !album.Monitored)
+        {
+            return false;
+        }
+
+        var old = message!.OldAlbum;
+        return ReferenceEquals(old, album) || (old != null && !old.Monitored);
     }
 
     private static bool IsSingle(Album album)
