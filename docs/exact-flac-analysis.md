@@ -6,13 +6,15 @@ disposable-host gate. The subsequent [Linux VM102 qualification](acceptance/issu
 passed all 14 native stages with Ubuntu FFmpeg 6.1.1 and a separately identified
 DLL. The [issue #49 qualification](acceptance/issue-49.md) adds native album-import
 and fault-injection stages to the same disposable runner on macOS arm64. Historical
-Linux-unverified statements below predate that bounded run. Windows remains
-unqualified; see the Windows gap note below for exactly what qualification requires.
+Linux-unverified statements below predate that bounded run. The
+[Windows qualification](acceptance/issue-49-windows.md) passed the same runner's 24 stages on
+Windows 11 x64 with the pinned gyan.dev FFmpeg 9.0.2 essentials build.
 
 ## Operating the feature
 
 1. Supply a pinned local FFmpeg executable in the Lidarr runtime. The qualified
-   build is FFmpeg 9.0.2, Homebrew 9.0.2_1 on macOS arm64. Use its absolute path
+   builds are FFmpeg 9.0.2: Homebrew 9.0.2_1 on macOS arm64, and the gyan.dev
+   `ffmpeg-9.0.2-essentials_build` (`ffmpeg.exe` SHA-256 `3256173f…8edec`) on Windows x64. Use its absolute path
    in **Local FFmpeg executable**; verify permissions under the Lidarr account.
    No executable, shared library or license bundle is included in the plugin ZIP.
 2. Enable **Exact FLAC analysis (report only)** in Connect, or Metadata if no
@@ -93,8 +95,9 @@ A decoder on the developer Mac says nothing about the production container.
 FFmpeg is available for Linux, macOS and Windows, but executable packaging,
 architecture, libc/runtime and permissions are deployment concerns. The exact-audio
 path is qualified natively on macOS arm64 ([#42](acceptance/issue-42.md),
-[#49](acceptance/issue-49.md)) and Linux x86_64
-([#37](acceptance/issue-37-linux.md)); the production container qualification is
+[#49](acceptance/issue-49.md)), Linux x86_64
+([#37](acceptance/issue-37-linux.md)) and Windows x64
+([#49 Windows](acceptance/issue-49-windows.md)); the production container qualification is
 recorded in [#43](acceptance/issue-43-production.md). A managed decoder would avoid
 an executable deployment step but adds a new shipped dependency and needs
 independent corruption/format qualification; libFLAC interop adds native
@@ -102,19 +105,18 @@ ABI/platform packaging. FFmpeg was selected because a usable local installation
 exists and its native FLAC decoder and diagnostic seam can be exercised without
 changing Lidarr core. No cloud service is involved.
 
-**Windows qualification gap (open).** Windows has never executed this path and
-remains unqualified — no claim is made. Qualifying it requires, at minimum: a
-Windows host running the documented disposable suite (`scripts/qualify-disposable-host.py`)
-end to end against a pinned Windows FFmpeg build, with the runner extended first
-because it currently maps only `osx`/`linux` RIDs and its fault-injection decoder
-wrappers are POSIX shell scripts that need Windows equivalents; retained receipts
-naming the decoder executable SHA-256, environment and every stage outcome under
-`docs/acceptance/`; and updates to the platform statements in this document to name
-exactly the qualified platforms. The C# suite's POSIX-only delete-guard proofs and
-process-lifecycle tests skip on Windows by design (Windows blocks the simulated
-external in-place writer through mandatory share enforcement — the protection the
-guard provides there — so the detection path cannot be exercised as on POSIX); a
-Windows qualification must state that boundary rather than imply parity.
+**Windows qualification (2026-11-24).** The disposable suite
+(`scripts/qualify-disposable-host.py`) passed all 24 stages on Windows 11 x64 (NT 10.0.26200)
+against the pinned gyan.dev FFmpeg 9.0.2 essentials build, with the decoder SHA-256,
+environment and every stage outcome retained in [issue-49-windows](acceptance/issue-49-windows.md).
+Windows stands in for the POSIX fault mechanisms where it has no equivalent: `.cmd` decoder
+wrappers, an externally terminated wrapper in place of `kill -9`, an open handle without delete
+sharing in place of a read-only directory, and API shutdown in place of SIGTERM. The C# suite's
+POSIX-only delete-guard proofs and process-lifecycle tests stay guarded off on Windows by
+design: Windows blocks the simulated external in-place writer through mandatory share
+enforcement, which is the protection the guard provides there, so the post-delete detection path
+is not exercised as on POSIX. Windows on arm64, other FFmpeg builds and a Windows service install
+are not qualified.
 
 FFmpeg's normal license is LGPL 2.1 or later; enabling optional GPL components or
 version3 changes the applicable license. See the upstream
@@ -317,8 +319,9 @@ with useCache:false follows the same identity and safety checks without evidence
 Use a directly configured, pinned decoder executable. Executable hashing identifies
 that file/build; it does not attest transitive shared libraries, interpreter scripts or
 runtime-loaded plugins. Deployment changes to those dependencies require restarting
-Lidarr to discard process-local evidence and rerunning decoder qualification. Linux,
-Windows, production deployment and live dispatcher acceptance remain unverified.
+Lidarr to discard process-local evidence and rerunning decoder qualification. (This
+paragraph's original boundary, Linux and Windows unverified, is superseded by the Linux,
+Windows and production receipts linked above.)
 
 ## Follow-up observability, cancellation and budgeting (#44)
 
