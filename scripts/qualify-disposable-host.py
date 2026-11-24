@@ -179,6 +179,9 @@ try:
     sql(seed)
     start()
     assert not any(x['taskName'] == 'UniqueSinglesScan' for x in api('system/task'))
+    # Scans refuse to run while the Metadata entry is disabled (#68), so enable it now that
+    # the disabled entry has been shown to register no scheduled task.
+    provider('metadata', {}, enable=True)
     scan('metadata-report', '1 exact duplicates (report only)')
     intact()
     scan('warm-cache-report', '1 exact duplicates (report only)')
@@ -247,9 +250,13 @@ try:
     assert not CANDIDATE.exists() and all(not p.exists() for p in candidate_paths)
     # Repeat the actual import with explicit cleanup enabled, checking the event
     # outcome rather than trusting the dispatcher's generic completion message.
-    candidate_album = api('album/200')
-    candidate_album['monitored'] = True
-    api('album/200', candidate_album, 'PUT')
+    # Re-monitoring through the API is a user re-monitor (#71), which the plugin honours by
+    # leaving the release alone. Reset the disposable database to a fresh monitored candidate
+    # instead, so this stage still proves that the opt-in import route cleans.
+    stop()
+    sql(lambda db: (db.execute('UPDATE Albums SET Monitored=1 WHERE Id=200'),
+                    db.execute("DELETE FROM History WHERE AlbumId=200 AND json_extract(Data, '$.plugin')='UniqueSingles'")))
+    start()
     command('manual-import-opt-in', {'name': 'ManualImport', 'importMode': 'copy', 'replaceExistingFiles': True, 'files': [{'path': str(incoming), 'artistId': 1, 'albumId': 200, 'albumReleaseId': 200, 'trackIds': [200], 'quality': {'quality': {'id': 6, 'name': 'FLAC'}, 'revision': {'version': 1, 'real': 0}}, 'disableReleaseSwitching': True}]})
     for _ in range(100):
         text = '\n'.join(Path(x.name).read_text() for x in logs)
@@ -281,6 +288,9 @@ try:
     results['stages']['restart-scan'] = scan('restart-scan', '0 singles cleaned')
     provider('metadata', {}, enable=False)
     assert not any(x['taskName'] == 'UniqueSinglesScan' for x in api('system/task'))
+    # Disabled entries refuse scans (#68); prove it, then re-enable for the remaining stages.
+    scan('disabled-entry-skips-scan', 'Scan skipped')
+    provider('metadata', {}, enable=True)
     stop()
     def survivors(db):
         for i, fixture, duration in [(300, 'original.flac', 100000), (400, 'same-tags.flac', 900000)]:
