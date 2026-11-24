@@ -317,7 +317,31 @@ public partial class SingleCleanupServiceTests
         Assert.Empty(albumService.SetMonitoredCalls);
         Assert.Empty(mediaFileService.AlbumLookupIds);
         Assert.Empty(deleteMediaFiles.DeletedFiles);
-        Assert.Contains(logger.InfoMessages, m => m.Contains("reason=no-downloaded-single-tracks", StringComparison.OrdinalIgnoreCase));
+        // Eager is on by default, so the Tier-1/Tier-2 check ran and failed; the reason says so.
+        Assert.Contains(logger.InfoMessages, m => m.Contains("reason=no-downloaded-single-tracks-not-tier1-or-tier2", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void CleanupSingleSelfCheckWithOptions_NoDownloadedTracks_EagerOff_ReasonNamesTier1Only()
+    {
+        var artist = Artist();
+        var comparisonAlbum = Album(100, "Album", "Album");
+        var importedSingle = Album(200, "Not Downloaded", "Single");
+        var logger = new RecordingLogger();
+        var albumService = new RecordingAlbumService(comparisonAlbum, importedSingle);
+        var trackService = new RecordingTrackService()
+            .WithTracks(comparisonAlbum.Id, Track("Song", 180000, "album-mbid", fileId: 11))
+            .WithTracks(importedSingle.Id, Track("Exclusive Song", 180000, "single-mbid", fileId: 0));
+        var service = Service(albumService, trackService, new RecordingMediaFileService(), new RecordingDeleteMediaFiles(), logger);
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album" }, Tier3Action.FlagOnly, eagerUnmonitorRedundantSingles: false);
+
+        var result = service.CleanupSingleSelfCheckWithOptions(artist, importedSingle, options);
+
+        Assert.Equal(1, result.Skipped);
+        Assert.Empty(albumService.SetMonitoredCalls);
+        // Only the Tier-1 check runs with eager off, so the Tier-1-only wording stays accurate.
+        Assert.Contains(logger.InfoMessages, m => m.Contains("reason=no-downloaded-single-tracks-not-tier1|", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(logger.InfoMessages, m => m.Contains("not-tier1-or-tier2", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -709,7 +733,7 @@ public partial class SingleCleanupServiceTests
         Assert.Equal(1, result.CandidatesChecked);
         Assert.Equal(0, result.Cleaned);
         // The exclusive track keeps the release; this is a keep-exclusive outcome (its own
-        // aggregate) rather than a plain skip, reconciling with the outcome= lines.
+        // aggregate) rather than a plain skip, matching its outcome=keep-exclusive line.
         Assert.Equal(0, result.Skipped);
         Assert.Equal(1, result.KeepExclusive);
         Assert.True(single.Monitored);
@@ -1930,11 +1954,11 @@ public partial class SingleCleanupServiceTests
     }
 
     // ============================================================
-    // Summary reconciliation with per-release outcome lines
+    // Summary counters vs per-release outcome lines (match-decision releases only)
     // ============================================================
 
     [Fact]
-    public void ScanArtistWithOptions_SummaryCountersReconcileWithOutcomeLines()
+    public void ScanArtistWithOptions_MatchDecisionReleases_OutcomeLinesAgreeWithCounters()
     {
         var artist = Artist();
         var album = Album(100, "Album", "Album");
@@ -1966,7 +1990,10 @@ public partial class SingleCleanupServiceTests
         Assert.Equal(1, result.ReviewNeeded);
         Assert.Equal(1, result.KeepExclusive);
         Assert.Equal(1, result.Skipped); // only the review-needed release remains in skipped
-        // Outcome lines agree one-to-one with the counters.
+        // Every release here has downloaded files and reaches the match decision, so its outcome=
+        // line agrees with the counters. This is not a general invariant: file-less unmonitors,
+        // the exact-audio report-only skip, and failures after approval are exceptions (see
+        // CleanupResult.KeepExclusive).
         Assert.Equal(result.Cleaned, logger.InfoMessages.Count(m => m.Contains("outcome=cleanup-approved")));
         Assert.Equal(result.ReviewNeeded, logger.InfoMessages.Count(m => m.Contains("outcome=unresolved-review")));
         Assert.Equal(result.KeepExclusive, logger.InfoMessages.Count(m => m.Contains("outcome=keep-exclusive")));

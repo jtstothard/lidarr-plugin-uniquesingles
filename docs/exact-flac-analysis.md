@@ -305,11 +305,28 @@ against Against Me! "Pretty Girls (The Mover)" was `decode-unavailable-or-invali
 with no gate detail; future occurrences will name the gate without code changes.
 The production file itself was out of scope for this ticket.
 
-Summary counters reconcile with per-release `outcome=` lines: `keepExclusive`
-counts `outcome=keep-exclusive` releases separately from `skipped` (which still
-includes unresolved reviews alongside their `reviewNeeded` count), and `cleaned`
-counts releases unmonitored — file deletion is attempted after unmonitoring but
-is not guaranteed, so audit `deleteFailures` alongside it.
+`keepExclusive` counts `outcome=keep-exclusive` releases separately from `skipped`
+(which still includes unresolved reviews alongside their `reviewNeeded` count), and
+`cleaned` counts releases unmonitored — file deletion is attempted after unmonitoring
+but is not guaranteed, so audit `deleteFailures` alongside it.
+
+Summary counters and per-release `outcome=` lines are **not** a strict one-to-one
+ledger. The `outcome=` line (`cleanup-approved`, `cleanup-skipped`, `keep-exclusive`,
+`unresolved-review`) is written once a release with downloaded files reaches the match
+decision, so the exceptions are:
+
+- A file-less single unmonitored by the Tier-1/Tier-2 no-files path counts
+  `cleaned=1` and has no `outcome=` line; its line carries
+  `reason=tier1-mbid-matches-no-files` or `reason=tier2-matches-no-files` instead.
+- The exact-audio report-only early return (complete verified coverage with cleanup
+  off) counts `skipped=1` before the match decision, so it has no `outcome=` line.
+- `outcome=cleanup-approved` is logged before exact-audio revalidation and before the
+  unmonitor, so it can be followed by `skipped=1` (revalidation refused) or by
+  `unmonitorFailures=1` with `cleaned=0`.
+- The other early skips (already unmonitored, no files and not redundant) count
+  `skipped=1` with only a `reason=` line.
+- The eager service's own `outcome=keep-exclusive` lines are not counted in any scan
+  or import summary.
 
 Cleanup actions are auditable outside plugin logs. Unmonitor actions write a
 Lidarr History row per release through the host's own history repository, with

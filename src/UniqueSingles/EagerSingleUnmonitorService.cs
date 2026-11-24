@@ -16,8 +16,9 @@ namespace NzbDrone.Core.Plugins;
 /// cleanup path uses (TrackMatcher.CheckSingle over every catalog track, compared against
 /// downloaded tracks on monitored releases of the configured comparison types) at the
 /// lifecycle points where a single becomes grabbable — metadata refresh, album add, album
-/// refresh, and monitoring edits — so a fully redundant single is unmonitored before RSS or
-/// a search can grab it, instead of being downloaded first and cleaned up on import.
+/// refresh, and monitoring edits — so a fully redundant single is normally unmonitored before
+/// RSS or a search grabs it, instead of being downloaded first and cleaned up on import.
+/// This is best effort, not a guarantee that no grab can follow: see docs/eager-unmonitor.md.
 ///
 /// This service is deliberately narrower than the cleanup path in two ways:
 /// - It only ever unmonitors; it never deletes files.
@@ -33,14 +34,25 @@ namespace NzbDrone.Core.Plugins;
 ///
 /// Lidarr's plugin assembly registration exposes every public class implementing
 /// IHandle&lt;TEvent&gt; to the EventAggregator, so these handlers run synchronously inside
-/// the album lifecycle operations — strictly before any queued refresh/search command can
-/// execute against the new monitoring state. A grab-time hook (NotificationBase.OnGrab) is
-/// deliberately NOT used: notifications fire after Lidarr has already sent the download to
-/// the client, and unmonitoring there would race the in-flight download.
+/// the album lifecycle operations. That does not make the unmonitor authoritative: the events
+/// carry Lidarr's in-memory album instances, Lidarr's own post-refresh code (AlbumAddedService)
+/// can queue searches from those instances' monitored flags, searches do not re-check the
+/// monitored flag, and AlbumMonitoredService can re-monitor file-less albums on artist add
+/// without publishing an event. A grab can therefore still happen. What is promised is
+/// conditional, not absolute: when the import-time cleanup (Connect entry) or the scheduled
+/// scan (off by default) is enabled, files that arrive for a redundant single are cleaned if
+/// the single was left monitored because a download was in flight, or if the files came from
+/// an automatic grab that raced the plugin's unmonitor. Files stay when a delete fails, when
+/// the cleanup rules or the History provenance lookup do not clear them, and when the user
+/// fetched the release deliberately after the unmonitor (that is the user's own download, not
+/// a leak). See the two guards below and docs/eager-unmonitor.md.
+/// A grab-time hook (NotificationBase.OnGrab) is deliberately NOT used: notifications fire
+/// after Lidarr has already sent the download to the client, and unmonitoring there would
+/// race the in-flight download.
 ///
 /// Two further guards keep the unmonitor from leaking files:
-/// - A single with a grabbed, downloading, or awaiting-import download (IInFlightReleaseProbe,
-///   a read-only view of Lidarr's tracked downloads and grab history) stays monitored; the
+/// - A single with a download in the download client's queue or in Lidarr's tracked downloads
+///   (IInFlightReleaseProbe, a read-only view of those and of recent grab history) stays monitored; the
 ///   import-time self-check cleans it once the files land.
 /// - A single the user re-monitored after the plugin unmonitored it is never unmonitored again.
 ///   The explicit re-monitor (an AlbumEditedEvent from the UI/API monitoring toggle) is recorded
@@ -101,8 +113,9 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
     /// <summary>
     /// Metadata refresh path — the production churn scenario from #26: switching a metadata
     /// profile to include Singles makes newly fetched singles appear as Added children with
-    /// monitored state already assigned, after tracks were inserted by the album refresh and
-    /// before any search or RSS pass can act on them.
+    /// monitored state already assigned, after tracks were inserted by the album refresh. The
+    /// event carries the refresh's in-memory instances, so unmonitoring here does not
+    /// guarantee that Lidarr's own post-refresh search skips the single (see class summary).
     /// </summary>
     public void Handle(AlbumInfoRefreshedEvent message)
     {
@@ -382,7 +395,7 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
 
         single.Monitored = false;
         _logger.Info(
-            "UniqueSingles eager unmonitor success: single unmonitored before any grab. artistId={0} artist='{1}' singleId={2} single='{3}' trigger={4} reason='{5}'",
+            "UniqueSingles eager unmonitor success: single unmonitored (no downloaded files). artistId={0} artist='{1}' singleId={2} single='{3}' trigger={4} reason='{5}'",
             artist.Id,
             artist.Name,
             single.Id,

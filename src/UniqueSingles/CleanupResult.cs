@@ -35,8 +35,19 @@ public readonly struct CleanupResult
 
     /// <summary>
     /// Number of singles kept because they contain content with no counterpart anywhere in the
-    /// comparison pool (outcome=keep-exclusive). Reported separately from <see cref="Skipped"/>
-    /// so summary counters reconcile with per-release outcome lines.
+    /// comparison pool (outcome=keep-exclusive). Reported separately from <see cref="Skipped"/>.
+    ///
+    /// Counters and per-release outcome= lines are NOT a strict one-to-one ledger. The outcome=
+    /// line (cleanup-approved, cleanup-skipped, keep-exclusive, unresolved-review) is written by
+    /// LogMatchDecision once a release with downloaded files reaches the match decision. Exceptions:
+    /// (a) the file-less unmonitor paths count Cleaned=1 and write no outcome= line (they log a
+    /// reason=tier1-mbid-matches-no-files / tier2-matches-no-files line instead); (b) the
+    /// exact-audio report-only early return counts Skipped=1 before LogMatchDecision, so it has no
+    /// outcome= line; (c) outcome=cleanup-approved is logged before the exact-audio revalidation
+    /// and the unmonitor, so it can be followed by Skipped=1 (revalidation refused) or
+    /// UnmonitorFailures=1 with Cleaned=0; (d) the other early skips (already-unmonitored, no files
+    /// and not redundant, in-flight download, user re-monitored) count Skipped=1 with only a
+    /// reason= line. The eager service's outcome=keep-exclusive lines are never counted here.
     /// </summary>
     public int KeepExclusive { get; }
 
