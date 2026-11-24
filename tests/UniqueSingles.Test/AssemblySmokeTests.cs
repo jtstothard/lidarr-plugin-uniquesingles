@@ -85,6 +85,21 @@ public class AssemblySmokeTests
         Assert.DoesNotContain(references.Values, version => version?.Major == 10);
     }
 
+    [Theory]
+    [InlineData("Lidarr.Core")]
+    [InlineData("Lidarr.Common")]
+    [InlineData("Lidarr.Http")]
+    [InlineData("Lidarr.Api.V1")]
+    public void LoadedLidarrAssemblies_AreSupportedVersion(string assemblyName)
+    {
+        // The plugin only compiles against Core and Common, but Http and Api.V1 are also
+        // referenced by the build; all four must be the pinned release (see
+        // LidarrReferences.targets, which enforces the same at build time).
+        var loaded = System.Reflection.Assembly.Load(new System.Reflection.AssemblyName(assemblyName));
+
+        Assert.Equal(SupportedLidarrVersion, loaded.GetName().Version);
+    }
+
     [Fact]
     public void Plugin_InstalledVersion_MatchesInformationalVersion()
     {

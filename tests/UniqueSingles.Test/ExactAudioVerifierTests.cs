@@ -29,6 +29,44 @@ public class ExactAudioVerifierTests
         Assert.Equal(24, evidence.Candidate!.BitDepth);
     }
 
+    [Theory]
+    [InlineData(typeof(System.ComponentModel.Win32Exception))]
+    [InlineData(typeof(InvalidOperationException))]
+    [InlineData(typeof(NotSupportedException))]
+    [InlineData(typeof(AggregateException))]
+    public void KillOnCancel_SwallowsAnyKillException_AndCancellationCompletes(Type exceptionType)
+    {
+        using var cts = new CancellationTokenSource();
+        var kills = 0;
+        var laterCallbackRan = false;
+        using var registration = FfmpegExactAudioVerifier.RegisterKillOnCancel(cts.Token, () =>
+        {
+            kills++;
+            throw (Exception)Activator.CreateInstance(exceptionType)!;
+        });
+        using var later = cts.Token.Register(() => laterCallbackRan = true);
+
+        // Cancel() rethrows any exception that escapes a callback as AggregateException (on the CancelAfter
+        // timer thread the same escape is unhandled and aborts the host process).
+        var thrown = Record.Exception(() => cts.Cancel());
+
+        Assert.Null(thrown);
+        Assert.Equal(1, kills);
+        Assert.True(laterCallbackRan);
+        Assert.True(cts.IsCancellationRequested);
+    }
+
+    [Fact]
+    public void KillOnCancel_RunsKillWhenCancelled_AndNotBefore()
+    {
+        using var cts = new CancellationTokenSource();
+        var kills = 0;
+        using var registration = FfmpegExactAudioVerifier.RegisterKillOnCancel(cts.Token, () => kills++);
+        Assert.Equal(0, kills);
+        cts.Cancel();
+        Assert.Equal(1, kills);
+    }
+
     [Fact]
     public void DeadlineCannotReturnVerification()
     {

@@ -33,8 +33,15 @@
 
   <ItemGroup>
     <Compile Include="SingleCleanupServiceTests.cs" />
+    <Compile Include="SingleFolderCleanupTests.cs" />
     <Compile Include="EagerSingleUnmonitorServiceTests.cs" />
+    <Compile Include="UnmonitorLeakWindowTests.cs" />
+    <Compile Include="LeakBackstopProvenanceTests.cs" />
+    <Compile Include="InFlightReleaseProbeTests.cs" />
     <Compile Include="ExactAudioCleanupTests.cs" />
+    <Compile Include="SecondaryTypeProtectionTests.cs" />
+    <Compile Include="SurvivorAnchorTests.cs" />
+    <Compile Include="RevalidationAuthorityTests.cs" />
     <Compile Include="ExactAudioVerifierTests.cs" />
     <Compile Include="ExactAudioFollowupsTests.cs" />
     <Compile Include="Matching/TrackMatcherTests.cs" />

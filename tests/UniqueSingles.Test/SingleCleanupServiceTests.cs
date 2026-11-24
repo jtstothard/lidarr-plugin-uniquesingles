@@ -317,7 +317,31 @@ public partial class SingleCleanupServiceTests
         Assert.Empty(albumService.SetMonitoredCalls);
         Assert.Empty(mediaFileService.AlbumLookupIds);
         Assert.Empty(deleteMediaFiles.DeletedFiles);
-        Assert.Contains(logger.InfoMessages, m => m.Contains("reason=no-downloaded-single-tracks", StringComparison.OrdinalIgnoreCase));
+        // Eager is on by default, so the Tier-1/Tier-2 check ran and failed; the reason says so.
+        Assert.Contains(logger.InfoMessages, m => m.Contains("reason=no-downloaded-single-tracks-not-tier1-or-tier2", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void CleanupSingleSelfCheckWithOptions_NoDownloadedTracks_EagerOff_ReasonNamesTier1Only()
+    {
+        var artist = Artist();
+        var comparisonAlbum = Album(100, "Album", "Album");
+        var importedSingle = Album(200, "Not Downloaded", "Single");
+        var logger = new RecordingLogger();
+        var albumService = new RecordingAlbumService(comparisonAlbum, importedSingle);
+        var trackService = new RecordingTrackService()
+            .WithTracks(comparisonAlbum.Id, Track("Song", 180000, "album-mbid", fileId: 11))
+            .WithTracks(importedSingle.Id, Track("Exclusive Song", 180000, "single-mbid", fileId: 0));
+        var service = Service(albumService, trackService, new RecordingMediaFileService(), new RecordingDeleteMediaFiles(), logger);
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album" }, Tier3Action.FlagOnly, eagerUnmonitorRedundantSingles: false);
+
+        var result = service.CleanupSingleSelfCheckWithOptions(artist, importedSingle, options);
+
+        Assert.Equal(1, result.Skipped);
+        Assert.Empty(albumService.SetMonitoredCalls);
+        // Only the Tier-1 check runs with eager off, so the Tier-1-only wording stays accurate.
+        Assert.Contains(logger.InfoMessages, m => m.Contains("reason=no-downloaded-single-tracks-not-tier1|", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(logger.InfoMessages, m => m.Contains("not-tier1-or-tier2", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -370,6 +394,59 @@ public partial class SingleCleanupServiceTests
         Assert.False(single.Monitored);
         Assert.Single(deleteMediaFiles.DeletedFiles);
         Assert.Contains(logger.WarnMessages, m => m.Contains("delete failure", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void CleanupSinglesForArtist_FolderCleanup_RunsOnlyAfterAllAudioDeleted(bool deleteFails, bool expectFolderCleanup)
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var single = Album(200, "Single", "Single");
+        var albumService = new RecordingAlbumService(album, single);
+        var trackService = new RecordingTrackService()
+            .WithTracks(album.Id, Track("Song", 180000, "mbid", fileId: 11))
+            .WithTracks(single.Id, Track("Song", 180000, "mbid", fileId: 21));
+        var mediaFileService = new RecordingMediaFileService()
+            .WithFiles(single.Id, File(901, single.Id, "/music/Artist/Single/(2024) Single/01 Song.flac"));
+        var deleteMediaFiles = new RecordingDeleteMediaFiles { ThrowOnDelete = deleteFails };
+        var folderCleanup = new RecordingFolderCleanup();
+        var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, folderCleanup: folderCleanup);
+
+        service.CleanupSinglesForArtist(artist, album);
+
+        if (expectFolderCleanup)
+        {
+            var call = Assert.Single(folderCleanup.Calls);
+            Assert.Equal(single.Id, call.SingleId);
+            Assert.Equal(new List<int> { 901 }, call.FileIds);
+        }
+        else
+        {
+            Assert.Empty(folderCleanup.Calls);
+        }
+    }
+
+    [Fact]
+    public void ScanArtistWithOptions_SweepsStrandedFoldersWithTheArtistsAlbums()
+    {
+        var artist = Artist();
+        var album = Album(100, "Album", "Album");
+        var doneSingle = Album(200, "Already Done", "Single", monitored: false);
+        var albumService = new RecordingAlbumService(album, doneSingle);
+        var trackService = new RecordingTrackService()
+            .WithTracks(album.Id, Track("Song", 180000, "mbid", fileId: 11))
+            .WithTracks(doneSingle.Id, Track("Song", 180000, "mbid", fileId: 0));
+        var folderCleanup = new RecordingFolderCleanup();
+        var service = Service(albumService, trackService, new RecordingMediaFileService(), new RecordingDeleteMediaFiles(), folderCleanup: folderCleanup);
+
+        var options = new SingleCleanupOptions(3000, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Album", "EP" }, Tier3Action.FlagOnly);
+        service.ScanArtistWithOptions(artist, options);
+
+        var sweep = Assert.Single(folderCleanup.Sweeps);
+        Assert.Equal(artist.Id, sweep.ArtistId);
+        Assert.Equal(new List<int> { 100, 200 }, sweep.AlbumIds.OrderBy(id => id).ToList());
     }
 
     // ============================================================
@@ -709,7 +786,7 @@ public partial class SingleCleanupServiceTests
         Assert.Equal(1, result.CandidatesChecked);
         Assert.Equal(0, result.Cleaned);
         // The exclusive track keeps the release; this is a keep-exclusive outcome (its own
-        // aggregate) rather than a plain skip, reconciling with the outcome= lines.
+        // aggregate) rather than a plain skip, matching its outcome=keep-exclusive line.
         Assert.Equal(0, result.Skipped);
         Assert.Equal(1, result.KeepExclusive);
         Assert.True(single.Monitored);
@@ -924,7 +1001,9 @@ public partial class SingleCleanupServiceTests
         RecordingMediaFileService mediaFileService,
         RecordingDeleteMediaFiles deleteMediaFiles,
         RecordingLogger? logger = null,
-        RecordingHistoryRecorder? historyRecorder = null)
+        RecordingHistoryRecorder? historyRecorder = null,
+        StubInFlightProbe? inFlightProbe = null,
+        RecordingFolderCleanup? folderCleanup = null)
     {
         var loggerHarness = logger ?? new RecordingLogger();
         return new SingleCleanupService(
@@ -933,7 +1012,26 @@ public partial class SingleCleanupServiceTests
             mediaFileService,
             deleteMediaFiles,
             historyRecorder ?? new RecordingHistoryRecorder(),
+            inFlightProbe ?? new StubInFlightProbe(),
+            folderCleanup ?? new RecordingFolderCleanup(),
             loggerHarness.Logger);
+    }
+
+    internal sealed class RecordingFolderCleanup : ISingleFolderCleanup
+    {
+        public List<(int SingleId, List<int> FileIds)> Calls { get; } = new();
+
+        public List<(int ArtistId, List<int> AlbumIds)> Sweeps { get; } = new();
+
+        public void RemoveLeftovers(Artist artist, Album single, IReadOnlyCollection<TrackFile> deletedFiles)
+        {
+            Calls.Add((single.Id, deletedFiles.Select(f => f.Id).ToList()));
+        }
+
+        public void SweepStrandedFolders(Artist artist, IReadOnlyCollection<Album> albums)
+        {
+            Sweeps.Add((artist.Id, albums.Select(a => a.Id).ToList()));
+        }
     }
 
     private static Artist Artist() => new() { Id = 42, Name = "Test Artist" };
@@ -999,8 +1097,19 @@ public partial class SingleCleanupServiceTests
         {
             BeforeArtistLookup?.Invoke();
             ArtistAlbumLookupIds.Add(artistId);
-            return _albums;
+            // A snapshot, like a repository read: later swaps and removals never mutate a list
+            // a caller is already iterating.
+            return _albums.ToList();
         }
+
+        /// <summary>Replaces the stored album with a distinct instance, like a repository re-read.</summary>
+        public void ReplaceAlbum(Album fresh)
+        {
+            var index = _albums.FindIndex(a => a.Id == fresh.Id);
+            _albums[index] = fresh;
+        }
+
+        public void RemoveAlbum(int albumId) => _albums.RemoveAll(a => a.Id == albumId);
 
         public List<Album> GetNextAlbumsByArtistMetadataId(IEnumerable<int> artistMetadataIds) => NotUsed<List<Album>>();
 
@@ -1026,8 +1135,11 @@ public partial class SingleCleanupServiceTests
 
         public Album UpdateAlbum(Album album) => NotUsed<Album>();
 
+        public List<string>? Sequence { get; set; }
+
         public void SetAlbumMonitored(int albumId, bool monitored)
         {
+            Sequence?.Add($"set-monitored:{albumId}:{monitored}");
             SetMonitoredCalls.Add((albumId, monitored));
             if (ThrowOnSetAlbumMonitored)
             {
@@ -1255,16 +1367,79 @@ public partial class SingleCleanupServiceTests
     internal sealed class RecordingHistoryRecorder : ICleanupHistoryRecorder
     {
         public bool ThrowOnRecord { get; set; }
+        public bool FailRecord { get; set; }
         public List<(int ArtistId, int AlbumId, string Reason)> Unmonitors { get; } = new();
+        public List<int> Reverted { get; } = new();
+        public List<int> UserRemonitors { get; } = new();
+        public Dictionary<int, UnmonitorProvenance> Provenance { get; } = new();
 
-        public void RecordUnmonitor(Artist artist, Album single, string reason)
+        /// <summary>Albums whose current files all came from grabs the leak backstop may clean.</summary>
+        public HashSet<int> CleanableGrabAlbumIds { get; } = new();
+        public List<(int AlbumId, IReadOnlyCollection<int> FileIds)> GrabChecks { get; } = new();
+
+        /// <summary>Runs after each FilesCameFromCleanableGrab result is decided, with its 1-based call number.</summary>
+        public Action<int>? OnGrabCheck { get; set; }
+
+        /// <summary>Records the order of history writes relative to other recorded actions.</summary>
+        public List<string>? Sequence { get; set; }
+
+        public UnmonitorProvenance GetProvenance(int albumId) =>
+            Provenance.TryGetValue(albumId, out var provenance) ? provenance : UnmonitorProvenance.None;
+
+        public bool RecordUserRemonitor(Artist? artist, Album single)
         {
+            UserRemonitors.Add(single.Id);
+            return true;
+        }
+
+        public bool RecordUnmonitor(Artist artist, Album single, string reason)
+        {
+            Sequence?.Add($"history:unmonitor:{single.Id}");
             if (ThrowOnRecord)
             {
                 throw new InvalidOperationException("history insert failed");
             }
 
+            if (FailRecord)
+            {
+                return false;
+            }
+
             Unmonitors.Add((artist.Id, single.Id, reason ?? string.Empty));
+            return true;
+        }
+
+        public bool RecordUnmonitorReverted(Artist artist, Album single)
+        {
+            // A reverted unmonitor leaves no live Unmonitor row.
+            Reverted.Add(single.Id);
+            Unmonitors.RemoveAll(u => u.AlbumId == single.Id);
+            return true;
+        }
+
+        public bool FilesCameFromCleanableGrab(int albumId, IReadOnlyCollection<int> trackFileIds, out string detail)
+        {
+            GrabChecks.Add((albumId, trackFileIds));
+            var race = CleanableGrabAlbumIds.Contains(albumId) && trackFileIds.Count > 0;
+            // State changes made here are seen from the next call on, as if they happened
+            // after this check returned (during matching or exact-audio analysis).
+            OnGrabCheck?.Invoke(GrabChecks.Count);
+            detail = race ? "all-files-from-grabs-before-unmonitor" : "fileId=0 grabbed-after-unmonitor";
+            return race;
+        }
+    }
+
+    internal sealed class StubInFlightProbe : IInFlightReleaseProbe
+    {
+        public HashSet<int> InFlightAlbumIds { get; } = new();
+        public List<int> Queried { get; } = new();
+
+        public bool IsInFlight(Album release, out string detail)
+        {
+            Queried.Add(release.Id);
+            var inFlight = InFlightAlbumIds.Contains(release.Id);
+            detail = inFlight ? "tracked-download state=Downloading downloadId=test" : "none";
+            return inFlight;
         }
     }
 
@@ -1862,11 +2037,11 @@ public partial class SingleCleanupServiceTests
     }
 
     // ============================================================
-    // Summary reconciliation with per-release outcome lines
+    // Summary counters vs per-release outcome lines (match-decision releases only)
     // ============================================================
 
     [Fact]
-    public void ScanArtistWithOptions_SummaryCountersReconcileWithOutcomeLines()
+    public void ScanArtistWithOptions_MatchDecisionReleases_OutcomeLinesAgreeWithCounters()
     {
         var artist = Artist();
         var album = Album(100, "Album", "Album");
@@ -1898,7 +2073,10 @@ public partial class SingleCleanupServiceTests
         Assert.Equal(1, result.ReviewNeeded);
         Assert.Equal(1, result.KeepExclusive);
         Assert.Equal(1, result.Skipped); // only the review-needed release remains in skipped
-        // Outcome lines agree one-to-one with the counters.
+        // Every release here has downloaded files and reaches the match decision, so its outcome=
+        // line agrees with the counters. This is not a general invariant: file-less unmonitors,
+        // the exact-audio report-only skip, and failures after approval are exceptions (see
+        // CleanupResult.KeepExclusive).
         Assert.Equal(result.Cleaned, logger.InfoMessages.Count(m => m.Contains("outcome=cleanup-approved")));
         Assert.Equal(result.ReviewNeeded, logger.InfoMessages.Count(m => m.Contains("outcome=unresolved-review")));
         Assert.Equal(result.KeepExclusive, logger.InfoMessages.Count(m => m.Contains("outcome=keep-exclusive")));

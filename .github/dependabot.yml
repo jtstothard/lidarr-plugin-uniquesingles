@@ -21,3 +21,6 @@ updates:
         update-types:
           - patch
           - minor
+    ignore:
+      # codeql.yml deliberately tracks the moving major tag (v4); do not propose pinned bumps (see #18).
+      - dependency-name: "github/codeql-action"

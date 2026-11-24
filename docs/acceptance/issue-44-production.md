@@ -38,9 +38,11 @@ PR #47 (issue #44) follow-ups to the exact-audio matching delivery (PR #43):
   `reviewPriority` label) instead of a hard-coded literal; actual destructive
   grants stay on the `decision=revalidated` lines.
 - `keepExclusive` summary aggregate so exclusive-content keeps are counted
-  separately instead of folded into `skipped`, letting summaries reconcile
-  with per-release `outcome=` lines, and completion wording clarifying that
-  `cleaned` counts releases unmonitored (deletion not guaranteed).
+  separately instead of folded into `skipped`, and completion wording clarifying that
+  `cleaned` counts releases unmonitored (deletion not guaranteed). (Correction: this
+  receipt originally said the counters then reconcile with per-release `outcome=`
+  lines. That holds only for releases with downloaded files that reach the match
+  decision; see `docs/exact-flac-analysis.md` for the exceptions.)
 - Dispatcher cancellation wiring into scan/import audio analysis
   (`AudioAnalysisCancellation` hub), so a scan stops before the next artist
   and decoder work returns unavailable evidence; settings precedence is
@@ -125,3 +127,10 @@ status/plugin checks, preserved schedule, provider snapshot equality and a
 clean plugin startup in `logs.db`. The deployment was binary-plus-restart
 only: no settings change, no decoder or image change, no database
 modification and no unrelated service change was performed.
+
+## Provenance note: tags
+
+Git tags `1.0.2.98` and `1.0.2.102` were recreated on 2026-11-03 and both now point at
+`470e8ce` (PR #48's merge), not at the builds' own commits. The CI run head SHAs
+(`f7eaee6` for run 98, `bcbccf0` for run 102) remain the authoritative evidence of what
+each build was built from.

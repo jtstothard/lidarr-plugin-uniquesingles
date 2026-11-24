@@ -53,6 +53,18 @@ public static class TrackMatcher
     /// <returns>The best MatchResult found, or a NoMatch result if nothing matched.</returns>
     public static MatchResult FindBestMatch(Track singleTrack, List<Track> albumTracks, int durationToleranceMs)
     {
+        return FindBestMatch(singleTrack, albumTracks, null, durationToleranceMs);
+    }
+
+    /// <summary>
+    /// Like <see cref="FindBestMatch(Track, List{Track}, int)"/>, with an extra pool of
+    /// <paramref name="tier1OnlyTracks"/>: tracks from releases that carry a secondary type
+    /// (Compilation, Soundtrack, ...) where the same bare title and a near-equal length are
+    /// routinely a different recording (a re-recorded hit, a radio edit). Those tracks may only
+    /// produce a Tier-1 exact-recording-MBID match; they never produce Tier 2 or Tier 3.
+    /// </summary>
+    public static MatchResult FindBestMatch(Track singleTrack, List<Track> albumTracks, List<Track>? tier1OnlyTracks, int durationToleranceMs)
+    {
         if (singleTrack == null)
         {
             throw new ArgumentNullException(nameof(singleTrack));
@@ -65,8 +77,11 @@ public static class TrackMatcher
 
         // Filter to only tracks with files (R012)
         var tracksWithFiles = albumTracks.Where(t => t.HasFile).ToList();
+        var tier1OnlyWithFiles = tier1OnlyTracks == null
+            ? new List<Track>()
+            : tier1OnlyTracks.Where(t => t.HasFile).ToList();
 
-        if (tracksWithFiles.Count == 0)
+        if (tracksWithFiles.Count == 0 && tier1OnlyWithFiles.Count == 0)
         {
             return new MatchResult(
                 singleTrack,
@@ -76,8 +91,9 @@ public static class TrackMatcher
                 "No album tracks with files found.");
         }
 
-        // Tier 1: Exact MBID match
-        var tier1Match = FindTier1Match(singleTrack, tracksWithFiles);
+        // Tier 1: Exact MBID match (standard sources first, then Tier-1-only sources)
+        var tier1Match = FindTier1Match(singleTrack, tracksWithFiles)
+            ?? FindTier1Match(singleTrack, tier1OnlyWithFiles);
         if (tier1Match != null)
         {
             return tier1Match;
@@ -103,7 +119,7 @@ public static class TrackMatcher
             null,
             MatchTier.NoMatch,
             Confidence.NoMatch,
-            $"No match found for '{singleTrack.Title}' across {tracksWithFiles.Count} album tracks.");
+            $"No match found for '{singleTrack.Title}' across {tracksWithFiles.Count + tier1OnlyWithFiles.Count} album tracks.");
     }
 
     /// <summary>
@@ -135,6 +151,16 @@ public static class TrackMatcher
     /// <returns>A SingleRedundancyCheck with per-track results and overall assessment.</returns>
     public static SingleRedundancyCheck CheckSingle(List<Track> singleTracks, List<Track> albumTracks, int durationToleranceMs)
     {
+        return CheckSingle(singleTracks, albumTracks, null, durationToleranceMs);
+    }
+
+    /// <summary>
+    /// Like <see cref="CheckSingle(List{Track}, List{Track}, int)"/>, additionally comparing
+    /// against <paramref name="tier1OnlyTracks"/>, which can only contribute Tier-1 (exact
+    /// recording MBID) matches. See <see cref="FindBestMatch(Track, List{Track}, List{Track}?, int)"/>.
+    /// </summary>
+    public static SingleRedundancyCheck CheckSingle(List<Track> singleTracks, List<Track> albumTracks, List<Track>? tier1OnlyTracks, int durationToleranceMs)
+    {
         if (singleTracks == null || singleTracks.Count == 0)
         {
             return new SingleRedundancyCheck(
@@ -143,7 +169,7 @@ public static class TrackMatcher
                 "No single tracks provided.");
         }
 
-        if (albumTracks == null || albumTracks.Count == 0)
+        if ((albumTracks == null || albumTracks.Count == 0) && (tier1OnlyTracks == null || tier1OnlyTracks.Count == 0))
         {
             var noAlbumResults = singleTracks.Select(t =>
                 new MatchResult(t, null, MatchTier.NoMatch, Confidence.NoMatch, "No album tracks provided.")).ToList();
@@ -156,7 +182,7 @@ public static class TrackMatcher
 
         // Find best match for each single track
         var trackResults = singleTracks
-            .Select(t => FindBestMatch(t, albumTracks, durationToleranceMs))
+            .Select(t => FindBestMatch(t, albumTracks ?? new List<Track>(), tier1OnlyTracks, durationToleranceMs))
             .ToList();
 
         // Determine overall redundancy
@@ -202,8 +228,8 @@ public static class TrackMatcher
 
             isRedundant = true;
             summaryReason = trackResults.Count == 1
-                ? $"All tracks matched. Tier 1: {tier1Count}, Tier 2: {tier2Count}. Safe to unmonitor and delete."
-                : $"All {trackResults.Count} tracks matched (Tier 1: {tier1Count}, Tier 2: {tier2Count}). Single is fully redundant — safe to unmonitor and delete.";
+                ? $"All tracks matched. Tier 1: {tier1Count}, Tier 2: {tier2Count}. Redundant."
+                : $"All {trackResults.Count} tracks matched (Tier 1: {tier1Count}, Tier 2: {tier2Count}). Single is fully redundant.";
         }
         else
         {
