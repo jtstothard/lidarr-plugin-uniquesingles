@@ -237,6 +237,28 @@ A post-delete re-read that cannot be performed also fails closed
 (`reason=post-delete-verify-failed`). Non-exact cleanup paths (metadata matching,
 Tier-1 no-file unmonitor) are unchanged and take no guard.
 
+**Survivor anchor.** The guard above pins the file being deleted; the retained
+source is protected by the complementary check. After each Lidarr deletion the
+plugin re-confirms, from the verified evidence snapshot, that the source file for every
+track stored in the deleted file still exists at its path with the SHA-256 verified
+before deletion. A source removed, renamed away or replaced inside the destructive window
+logs `reason=source-vanished-post-delete` (or `source-content-changed-post-delete`,
+`source-verify-failed-post-delete`), counts as a delete failure and aborts the remaining
+deletions. The check is detection, not prevention: a deletion that has already happened
+cannot be undone, so a source that vanishes in the microseconds between the final
+pre-delete hash and the unlink still costs the file, but it is never reported as a clean
+success. The source is not held open (`FileShare` cannot stop a POSIX unlink, and a
+no-delete share on Windows would block hardlinked candidates). Separately, the
+`source-shares-candidate-path` check compares **real paths** (symlinks resolved in the
+file and every parent directory), so a retained "source" that is a symlink to the
+candidate — or sits behind a symlinked directory — is rejected as not a second copy.
+Hardlinks keep their own directory entry and data, so a hardlinked source remains a valid
+survivor. Exact-audio eligibility of source releases follows the release-level secondary-type rules: Live/Remix/DJ-mix/Demo and
+unreadable-type releases are never sources, and a single carrying such a type is never a
+candidate. Releases with other secondary types (e.g. Compilation) remain eligible
+here because equality is proven on decoded audio, which is exactly the evidence that the
+metadata tiers lack for them.
+
 **Residual window (inherent, documented).** Deletion goes through Lidarr's
 path-based deletion service so that Lidarr's own `TrackFileDeleted` history and
 recycle-bin integration remain in force; the plugin cannot delete by handle without

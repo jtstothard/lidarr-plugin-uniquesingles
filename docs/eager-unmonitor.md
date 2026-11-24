@@ -26,7 +26,7 @@ registration) to the album lifecycle points where a single becomes grabbable:
 At each point the service runs the **same redundancy decision the cleanup path uses**:
 `TrackMatcher.CheckSingle` over **every catalog track** of the single, against the identical
 comparison pool (downloaded tracks on monitored releases of the configured comparison types,
-excluding Live/Remix/DJ-mix/Demo secondary types, never the candidate itself). The single is
+excluding Live/Remix/DJ-mix/Demo and unreadable-secondary-type releases, treating releases with any other secondary type as Tier-1-only sources, never the candidate itself). A single that itself carries Live/Remix/DJ-mix/Demo, or whose secondary types are unreadable, is never unmonitored. The single is
 unmonitored only when:
 
 1. the **Eagerly unmonitor redundant singles** setting is enabled (default on — the

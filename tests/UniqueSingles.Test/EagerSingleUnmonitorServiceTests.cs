@@ -232,6 +232,104 @@ public class EagerSingleUnmonitorServiceTests
         Assert.Empty(albumService.SetMonitoredCalls);
     }
 
+    [Theory]
+    [InlineData("Live")]
+    [InlineData("Remix")]
+    [InlineData("DJ-mix")]
+    [InlineData("Demo")]
+    public void AlbumInfoRefreshedEvent_CandidateWithExcludedSecondaryType_StaysMonitoredEvenOnExactMbid(string secondaryType)
+    {
+        // Mirror of the source-side exclusion: a Live/Remix/DJ-mix/Demo single is a distinct
+        // version, so no evidence tier (Tier 1 included) unmonitors it.
+        var artist = Artist();
+        var album = DownloadedAlbum();
+        var single = Single(200, "Hit Single (Live)", monitored: true);
+        single.SecondaryTypes = new List<SecondaryAlbumType> { (SecondaryAlbumType)secondaryType };
+        var (albumService, _, historyRecorder, service) = Setup(
+            artist, album, single,
+            albumTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 11) },
+            singleTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 0) });
+
+        service.Handle(new AlbumInfoRefreshedEvent(artist, new List<Album> { single }, new List<Album>(), new List<Album>()));
+
+        Assert.True(single.Monitored);
+        Assert.Empty(albumService.SetMonitoredCalls);
+        Assert.Empty(historyRecorder.Unmonitors);
+    }
+
+    [Fact]
+    public void AlbumInfoRefreshedEvent_CandidateWithUnknownSecondaryTypes_StaysMonitored()
+    {
+        var artist = Artist();
+        var album = DownloadedAlbum();
+        var single = Single(200, "Hit Single", monitored: true);
+        single.SecondaryTypes = null!;
+        var (albumService, _, _, service) = Setup(
+            artist, album, single,
+            albumTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 11) },
+            singleTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 0) });
+
+        service.Handle(new AlbumInfoRefreshedEvent(artist, new List<Album> { single }, new List<Album>(), new List<Album>()));
+
+        Assert.True(single.Monitored);
+        Assert.Empty(albumService.SetMonitoredCalls);
+    }
+
+    [Fact]
+    public void AlbumInfoRefreshedEvent_CompilationComparisonAlbum_CannotAuthorizeTier2()
+    {
+        // A "Greatest Hits" re-recording shares the bare title and a near-equal length.
+        var artist = Artist();
+        var compilation = DownloadedAlbum();
+        compilation.SecondaryTypes = new List<SecondaryAlbumType> { SecondaryAlbumType.Compilation };
+        var single = Single(200, "Hit Single", monitored: true);
+        var (albumService, _, _, service) = Setup(
+            artist, compilation, single,
+            albumTracks: new[] { Track("Hit", 180000, "compilation-recording", fileId: 11) },
+            singleTracks: new[] { Track("Hit", 181500, "studio-recording", fileId: 0) });
+
+        service.Handle(new AlbumInfoRefreshedEvent(artist, new List<Album> { single }, new List<Album>(), new List<Album>()));
+
+        Assert.True(single.Monitored);
+        Assert.Empty(albumService.SetMonitoredCalls);
+    }
+
+    [Fact]
+    public void AlbumInfoRefreshedEvent_CompilationComparisonAlbum_StillAuthorizesTier1()
+    {
+        var artist = Artist();
+        var compilation = DownloadedAlbum();
+        compilation.SecondaryTypes = new List<SecondaryAlbumType> { SecondaryAlbumType.Compilation };
+        var single = Single(200, "Hit Single", monitored: true);
+        var (albumService, _, _, service) = Setup(
+            artist, compilation, single,
+            albumTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 11) },
+            singleTracks: new[] { Track("Hit", 190000, "shared-recording-mbid", fileId: 0) });
+
+        service.Handle(new AlbumInfoRefreshedEvent(artist, new List<Album> { single }, new List<Album>(), new List<Album>()));
+
+        Assert.False(single.Monitored);
+        Assert.Equal(new[] { (single.Id, false) }, albumService.SetMonitoredCalls);
+    }
+
+    [Fact]
+    public void AlbumInfoRefreshedEvent_ComparisonAlbumWithUnknownSecondaryTypes_IsNotAComparisonSource()
+    {
+        var artist = Artist();
+        var album = DownloadedAlbum();
+        album.SecondaryTypes = null!;
+        var single = Single(200, "Hit Single", monitored: true);
+        var (albumService, _, _, service) = Setup(
+            artist, album, single,
+            albumTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 11) },
+            singleTracks: new[] { Track("Hit", 180000, "shared-recording-mbid", fileId: 0) });
+
+        service.Handle(new AlbumInfoRefreshedEvent(artist, new List<Album> { single }, new List<Album>(), new List<Album>()));
+
+        Assert.True(single.Monitored);
+        Assert.Empty(albumService.SetMonitoredCalls);
+    }
+
     [Fact]
     public void AlbumInfoRefreshedEvent_UndownloadedComparisonAlbum_IsNotAComparisonSource()
     {
