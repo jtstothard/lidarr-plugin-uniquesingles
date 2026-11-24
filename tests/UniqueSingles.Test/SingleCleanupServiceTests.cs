@@ -1344,6 +1344,9 @@ public partial class SingleCleanupServiceTests
         /// </summary>
         public Action<TrackFile>? BeforeDelete { get; set; }
 
+        /// <summary>Runs at the end of the destructive delete call, after the file is removed.</summary>
+        public Action<TrackFile>? AfterDelete { get; set; }
+
         public List<(Artist Artist, TrackFile TrackFile)> DeletedFiles { get; } = new();
 
         public void DeleteTrackFile(Artist artist, TrackFile trackFile)
@@ -1359,6 +1362,8 @@ public partial class SingleCleanupServiceTests
             {
                 System.IO.File.Delete(trackFile.Path);
             }
+
+            AfterDelete?.Invoke(trackFile);
         }
 
         public void DeleteTrackFile(TrackFile trackFile, string subfolder = "") => NotUsed();

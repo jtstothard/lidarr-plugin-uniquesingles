@@ -60,13 +60,19 @@ public partial class SingleCleanupServiceTests
                 else RunExternal("/bin/mv", source, source + ".moved-away");
             };
 
+            var originalDigest = Sha256(candidate);
+
             var result = AudioRun(h, route, ExactCleanupOptions());
 
-            // The candidate is gone and cannot be restored, but the vanished survivor must not be
-            // reported as a clean success: it is a counted delete failure with a clear reason.
-            Assert.False(System.IO.File.Exists(candidate));
+            // The vanished survivor must not be reported as a clean success: it is a counted
+            // delete failure with a clear reason. The candidate went through Lidarr's deletion,
+            // but its verified bytes are written back from the still-open guard handle, so the
+            // race costs no audio.
+            Assert.Equal(new[] { 21 }, h.Deletes.DeletedFiles.Select(d => d.TrackFile.Id).ToArray());
             Assert.Equal(1, result.DeleteFailures);
             Assert.Contains(log.WarnMessages, m => m.Contains("reason=source-vanished-post-delete") && m.Contains("remainingDeletions=aborted"));
+            Assert.Equal(originalDigest, Sha256(candidate));
+            Assert.Contains(log.WarnMessages, m => m.Contains("trackFileId=21") && m.Contains("rescue=restored") && m.Contains(candidate));
         }
         finally { System.IO.Directory.Delete(directory, true); }
     }
@@ -75,7 +81,7 @@ public partial class SingleCleanupServiceTests
     public void ExactCleanup_SourceReplacedInsideDeleteCall_IsDetected()
     {
         if (OperatingSystem.IsWindows()) return;
-        var (h, directory, _, source) = SurvivorHarness();
+        var (h, directory, candidate, source) = SurvivorHarness();
         using var log = h.Log;
         try
         {
@@ -88,9 +94,107 @@ public partial class SingleCleanupServiceTests
 
             Assert.Equal(1, result.DeleteFailures);
             Assert.Contains(log.WarnMessages, m => m.Contains("reason=source-content-changed-post-delete"));
+            // The verified copy no longer exists anywhere else, so the candidate comes back too.
+            Assert.Equal(Sha256(AudioFixture("original.flac")), Sha256(candidate));
+            Assert.Contains(log.WarnMessages, m => m.Contains("rescue=restored"));
         }
         finally { System.IO.Directory.Delete(directory, true); }
     }
+
+    [Fact]
+    public void ExactCleanup_SourceVanishes_AndOriginalPathIsRetaken_RescuesToSiblingWithoutOverwriting()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var (h, directory, candidate, source) = SurvivorHarness();
+        using var log = h.Log;
+        try
+        {
+            var originalDigest = Sha256(candidate);
+            h.Deletes.AfterDelete = file =>
+            {
+                if (file.Id != 21) return;
+                RunExternal("/bin/rm", source);
+                // Something else lands on the candidate's path before the rescue runs.
+                System.IO.File.WriteAllText(candidate, "new occupant");
+            };
+
+            var result = AudioRun(h, 0, ExactCleanupOptions());
+
+            var sibling = System.IO.Path.Combine(directory, "candidate.rescued.flac");
+            Assert.Equal(1, result.DeleteFailures);
+            Assert.Equal("new occupant", System.IO.File.ReadAllText(candidate));
+            Assert.Equal(originalDigest, Sha256(sibling));
+            Assert.Contains(log.WarnMessages, m => m.Contains("rescue=restored") && m.Contains(sibling));
+        }
+        finally { System.IO.Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public void ExactCleanup_SourceVanishes_AndNoRescueTargetIsFree_ReportsRescueFailedWithoutOverwriting()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var (h, directory, candidate, source) = SurvivorHarness();
+        using var log = h.Log;
+        try
+        {
+            var sibling = System.IO.Path.Combine(directory, "candidate.rescued.flac");
+            h.Deletes.AfterDelete = file =>
+            {
+                if (file.Id != 21) return;
+                RunExternal("/bin/rm", source);
+                System.IO.File.WriteAllText(candidate, "first occupant");
+                System.IO.File.WriteAllText(sibling, "second occupant");
+            };
+
+            var result = AudioRun(h, 0, ExactCleanupOptions());
+
+            Assert.Equal(1, result.DeleteFailures);
+            Assert.Equal("first occupant", System.IO.File.ReadAllText(candidate));
+            Assert.Equal("second occupant", System.IO.File.ReadAllText(sibling));
+            Assert.Contains(log.WarnMessages, m => m.Contains("rescue=failed") && m.Contains("trackFileId=21"));
+            Assert.DoesNotContain(log.WarnMessages, m => m.Contains("rescue=restored"));
+        }
+        finally { System.IO.Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public void ExactCleanup_CandidateMutatedInsideDeleteCall_IsNotRescued()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var (h, directory, candidate, source) = SurvivorHarness();
+        using var log = h.Log;
+        try
+        {
+            // The pinned candidate bytes no longer match the verified digest, so they are not
+            // the verified audio and must not be written back, even though the source also goes.
+            h.Deletes.BeforeDelete = file =>
+            {
+                if (file.Id != 21) return;
+                RunExternal("/bin/sh", "-c", "printf x >> \"$0\"", candidate);
+                RunExternal("/bin/rm", source);
+            };
+
+            var result = AudioRun(h, 0, ExactCleanupOptions());
+
+            Assert.Equal(1, result.DeleteFailures);
+            Assert.Contains(log.WarnMessages, m => m.Contains("mutation-detected-post-delete"));
+            Assert.False(System.IO.File.Exists(candidate));
+            Assert.DoesNotContain(log.WarnMessages, m => m.Contains("rescue="));
+        }
+        finally { System.IO.Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public void RescueTargets_TryOriginalPathThenSiblingKeepingTheAudioExtension()
+    {
+        var path = System.IO.Path.Combine("music", "Artist", "Single (2024)", "01 - Song.flac");
+
+        Assert.Equal(
+            new[] { path, System.IO.Path.Combine("music", "Artist", "Single (2024)", "01 - Song.rescued.flac") },
+            SingleCleanupService.RescueTargets(path).ToArray());
+    }
+
+    private static string Sha256(string path) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.IO.File.ReadAllBytes(path)));
 
     [Fact]
     public void ExactCleanup_IntactSourceAfterDelete_StillSucceeds()
@@ -106,6 +210,8 @@ public partial class SingleCleanupServiceTests
             Assert.False(System.IO.File.Exists(candidate));
             Assert.True(System.IO.File.Exists(source));
             Assert.DoesNotContain(log.WarnMessages, m => m.Contains("post-delete"));
+            Assert.DoesNotContain(log.WarnMessages, m => m.Contains("rescue="));
+            Assert.False(System.IO.File.Exists(System.IO.Path.Combine(directory, "candidate.rescued.flac")));
         }
         finally { System.IO.Directory.Delete(directory, true); }
     }

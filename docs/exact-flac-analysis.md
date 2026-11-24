@@ -245,9 +245,22 @@ before deletion. A source removed, renamed away or replaced inside the destructi
 logs `reason=source-vanished-post-delete` (or `source-content-changed-post-delete`,
 `source-verify-failed-post-delete`), counts as a delete failure and aborts the remaining
 deletions. The check is detection, not prevention: a deletion that has already happened
-cannot be undone, so a source that vanishes in the microseconds between the final
-pre-delete hash and the unlink still costs the file, but it is never reported as a clean
-success. The source is not held open (`FileShare` cannot stop a POSIX unlink, and a
+cannot be undone, and the outcome is never reported as a clean success. **Rescue copy
+(#77).** When the survivor check fails, the candidate just deleted is written back from
+its still-open guard handle. The handle's bytes were re-read after the deletion and still
+matched the verified digest, so they are the verified audio. They go to the candidate's
+original path, or to `<name>.rescued<ext>` beside it if that path has been taken; both are
+created with `CreateNew`, so nothing is ever overwritten. The log line is
+`rescue=restored path='…'` (`restored-unverified` if the written copy does not hash back to
+the verified digest, `rescue=failed` if neither target could be written). Lidarr dropped
+the TrackFile row with the deletion, so the restored file is untracked until the next
+artist rescan; the single stays unmonitored and the run still counts a delete failure.
+This works wherever the guard can still read the deleted bytes: after a plain unlink on
+Linux/macOS (the inode lives until the handle closes) and after a recycle-bin move on any
+platform. On Windows a plain delete leaves the original name occupied until the handle
+closes, so the copy lands on the `.rescued` sibling; that path is not exercised in CI. A
+candidate whose pinned bytes changed (`mutation-detected-post-delete`) is not rescued.
+The source is not held open (`FileShare` cannot stop a POSIX unlink, and a
 no-delete share on Windows would block hardlinked candidates). Separately, the
 `source-shares-candidate-path` check compares **real paths** (symlinks resolved in the
 file and every parent directory), so a retained "source" that is a symlink to the
