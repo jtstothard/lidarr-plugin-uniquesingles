@@ -223,12 +223,30 @@ public class UniqueSinglesScanTaskTests
     public void Execute_UnboundCommandHandler_UsesDefaultsWithoutThrowing()
     {
         var cleanup = new StubCleanupService();
-        var task = CreateTask(cleanup, new StubArtistService(new List<Artist> { MonitoredArtist(1, "Artist") }));
+        // The unbound handler has no Definition; the persisted (enabled) entry authorises the run.
+        var definitions = new List<MetadataDefinition>
+        {
+            new() { Implementation = nameof(UniqueSinglesScanTask), Enable = true, Settings = new UniqueSinglesSettings() }
+        };
+        var task = CreateTask(cleanup, new StubArtistService(new List<Artist> { MonitoredArtist(1, "Artist") }),
+            metadataDefinitions: definitions);
         task.Definition = null!;
 
         task.Execute(new UniqueSinglesScanCommand());
 
         Assert.Single(cleanup.ScannedArtists);
+    }
+
+    [Fact]
+    public void Execute_UnboundCommandHandler_NoPersistedEntry_FailsClosed()
+    {
+        var cleanup = new StubCleanupService();
+        var task = CreateTask(cleanup, new StubArtistService(new List<Artist> { MonitoredArtist(1, "Artist") }));
+        task.Definition = null!;
+
+        task.Execute(new UniqueSinglesScanCommand());
+
+        Assert.Empty(cleanup.ScannedArtists);
     }
 
     [Theory]
@@ -243,7 +261,7 @@ public class UniqueSinglesScanTaskTests
         var definitions = new List<MetadataDefinition>
         {
             new() { Implementation = "OtherProvider", Settings = new UniqueSinglesSettings { DurationToleranceMs = 9000 } },
-            new() { Implementation = nameof(UniqueSinglesScanTask), Settings = new UniqueSinglesSettings { DurationToleranceMs = 5000, ExactAudioAnalysis = true, ExactAudioDecoderPath = "metadata-decoder" } }
+            new() { Implementation = nameof(UniqueSinglesScanTask), Enable = true, Settings = new UniqueSinglesSettings { DurationToleranceMs = 5000, ExactAudioAnalysis = true, ExactAudioDecoderPath = "metadata-decoder" } }
         };
         var task = CreateTask(cleanup, new StubArtistService(new List<Artist> { MonitoredArtist(1, "Artist") }),
             notificationFactory: notifications, metadataDefinitions: definitions);
@@ -268,6 +286,7 @@ public class UniqueSinglesScanTaskTests
         var task = CreateTask(cleanupService, artistService, notificationFactory: factory);
         task.Definition = new NzbDrone.Core.Extras.Metadata.MetadataDefinition
         {
+            Enable = true,
             Settings = null // No provider settings either
         };
 
@@ -427,6 +446,78 @@ public class UniqueSinglesScanTaskTests
         Assert.Contains("0 singles cleaned (unmonitored; deletion not guaranteed)", command.ResultMessage);
     }
 
+    // ── Disabled-entry gate: queued/in-flight/API commands must not run ──
+
+    [Fact]
+    public void Execute_PersistedEntryDisabled_PerformsNoCleanupWork()
+    {
+        // The command was queued before the user unticked Enable; the bound definition is stale.
+        var cleanup = new StubCleanupService();
+        using var logger = new TestLogger();
+        var definitions = new List<MetadataDefinition>
+        {
+            new() { Implementation = nameof(UniqueSinglesScanTask), Enable = false, Settings = new UniqueSinglesSettings() }
+        };
+        var task = CreateTask(cleanup, new StubArtistService(new List<Artist> { MonitoredArtist(1, "A"), MonitoredArtist(2, "B") }),
+            logger.Logger, metadataDefinitions: definitions, entryEnabled: true);
+
+        var command = new UniqueSinglesScanCommand();
+        task.Execute(command);
+
+        Assert.Empty(cleanup.ScannedArtists);
+        Assert.Null(cleanup.LastOptions);
+        Assert.Contains("disabled", command.ResultMessage);
+        Assert.True(logger.HasMessageContaining("scan skipped"));
+    }
+
+    [Fact]
+    public void Execute_PersistedEntryDisabled_PerArtistScanPerformsNoCleanupWork()
+    {
+        var cleanup = new StubCleanupService();
+        var definitions = new List<MetadataDefinition>
+        {
+            new() { Implementation = nameof(UniqueSinglesScanTask), Enable = false, Settings = new UniqueSinglesSettings() }
+        };
+        var task = CreateTask(cleanup, new StubArtistService(new List<Artist> { MonitoredArtist(1, "A") }),
+            metadataDefinitions: definitions);
+
+        var command = new UniqueSinglesScanCommand { ArtistId = 1 };
+        task.Execute(command);
+
+        Assert.Empty(cleanup.ScannedArtists);
+        Assert.Contains("disabled", command.ResultMessage);
+    }
+
+    [Fact]
+    public void Execute_NoPersistedEntry_BoundDefinitionDisabled_PerformsNoCleanupWork()
+    {
+        var cleanup = new StubCleanupService();
+        var task = CreateTask(cleanup, new StubArtistService(new List<Artist> { MonitoredArtist(1, "A") }),
+            entryEnabled: false);
+
+        task.Execute(new UniqueSinglesScanCommand());
+
+        Assert.Empty(cleanup.ScannedArtists);
+    }
+
+    [Fact]
+    public void Execute_PersistedEntryEnabled_RunsEvenWhenUnboundDefinitionIsDisabled()
+    {
+        // CommandExecutor resolves an unbound handler whose default definition is disabled;
+        // the persisted entry is the source of truth.
+        var cleanup = new StubCleanupService();
+        var definitions = new List<MetadataDefinition>
+        {
+            new() { Implementation = nameof(UniqueSinglesScanTask), Enable = true, Settings = new UniqueSinglesSettings() }
+        };
+        var task = CreateTask(cleanup, new StubArtistService(new List<Artist> { MonitoredArtist(1, "A") }),
+            metadataDefinitions: definitions, entryEnabled: false);
+
+        task.Execute(new UniqueSinglesScanCommand());
+
+        Assert.Single(cleanup.ScannedArtists);
+    }
+
     // ── Helper methods and stubs ──────────────────────────────────────
 
     private static UniqueSinglesScanTask CreateTask(
@@ -435,7 +526,8 @@ public class UniqueSinglesScanTaskTests
         Logger? logger = null,
         INotificationFactory? notificationFactory = null,
         List<MetadataDefinition>? metadataDefinitions = null,
-        AudioAnalysisCancellation? audioCancellation = null)
+        AudioAnalysisCancellation? audioCancellation = null,
+        bool entryEnabled = true)
     {
         var log = logger ?? new TestLogger().Logger;
         var factory = notificationFactory ?? new StubNotificationFactory();
@@ -447,6 +539,7 @@ public class UniqueSinglesScanTaskTests
         // Provider infrastructure sets Definition before use; replicate in tests
         task.Definition = new NzbDrone.Core.Extras.Metadata.MetadataDefinition
         {
+            Enable = entryEnabled,
             Settings = new UniqueSinglesSettings()
         };
         return task;

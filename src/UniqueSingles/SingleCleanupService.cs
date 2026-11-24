@@ -453,12 +453,20 @@ public class SingleCleanupService : ISingleCleanupService
                 }
             }
 
+            // With the eager setting on, the Tier-1/Tier-2 check above also failed; with it off only
+            // the Tier-1 check ran. The reason token says which one actually kept the single.
+            var skipRule = options.EagerUnmonitorRedundantSingles ? "Tier-1/Tier-2" : "Tier-1";
+            var skipReason = options.EagerUnmonitorRedundantSingles
+                ? "no-downloaded-single-tracks-not-tier1-or-tier2"
+                : "no-downloaded-single-tracks-not-tier1";
             _logger.Info(
-                "UniqueSingles cleanup skip: single has no downloaded track files and is not fully Tier-1 redundant. artistId={0} artist='{1}' singleId={2} single='{3}' reason=no-downloaded-single-tracks-not-tier1",
+                "UniqueSingles cleanup skip: single has no downloaded track files and is not fully {4} redundant. artistId={0} artist='{1}' singleId={2} single='{3}' reason={5}",
                 artist.Id,
                 artist.Name,
                 single.Id,
-                single.Title);
+                single.Title,
+                skipRule,
+                skipReason);
             return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
         }
 
@@ -517,9 +525,10 @@ public class SingleCleanupService : ISingleCleanupService
             }
             else
             {
-                // Exclusive-content keeps get their own aggregate so summary counters reconcile
-                // with the per-release outcome=keep-exclusive lines; they are no longer folded
-                // into skipped. Review-needed outcomes remain skipped + reviewNeeded.
+                // Exclusive-content keeps get their own aggregate that matches the
+                // outcome=keep-exclusive lines; they are no longer folded into skipped.
+                // Review-needed outcomes remain skipped + reviewNeeded. See CleanupResult for
+                // the paths where a counter has no outcome= line.
                 if (check.TrackResults.Any(r => r.Tier == MatchTier.NoMatch))
                 {
                     return new CleanupResult(candidatesChecked, cleaned, 0, 0, unmonitorFailures, deleteFailures, keepExclusive: 1);
@@ -1244,7 +1253,13 @@ public class SingleCleanupService : ISingleCleanupService
         bool recorded;
         try
         {
-            recorded = _historyRecorder.RecordUnmonitor(artist, single, check.SummaryReason);
+            // SummaryReason describes only the match result and is also logged on paths that
+            // never delete. The History row says what the pass does next: a single with files
+            // gets a deletion attempt afterwards (a delete can fail).
+            var historyReason = fileless
+                ? check.SummaryReason
+                : $"{check.SummaryReason} Unmonitored; deleting its downloaded files follows under the cleanup rules (the outcome is logged separately).";
+            recorded = _historyRecorder.RecordUnmonitor(artist, single, historyReason);
         }
         catch (Exception historyEx)
         {

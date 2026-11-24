@@ -138,3 +138,10 @@ Validation: successful main CI build/tests, 14/14 production-runtime synthetic n
 stages, API/plugin/hash/account checks, stopped-backup settings comparison, restart
 persistence and schedule preservation. No product source change or local C# rebuild was
 needed. No push, additional PR, merge, watcher or unrelated service change was performed.
+
+## Provenance note: tags
+
+Git tags `1.0.2.98` and `1.0.2.102` were recreated on 2026-11-03 and both now point at
+`470e8ce` (PR #48's merge), not at the builds' own commits. The CI run head SHAs
+(`f7eaee6` for run 98, `bcbccf0` for run 102) remain the authoritative evidence of what
+each build was built from.

@@ -445,6 +445,119 @@ public class ScheduledTaskServiceTests
     }
 
     [Fact]
+    public void InitializeTasks_CaptureFailed_DoesNotScheduleOverdueScan()
+    {
+        // Capture could not read the table, so the previous run time is unknown. Seeding the
+        // "never ran" overdue schedule would fire a destructive scan on every restart (#29).
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 1440, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider);
+        var repo = new StubScheduledTaskRepository { AllFailuresRemaining = 1 };
+        var cache = new CacheManager();
+        using var logger = new TestLogger();
+
+        var service = new ScheduledTaskService(factory, repo, cache, logger.Logger);
+        service.CaptureExistingTasks();
+        service.InitializeTasks();
+
+        var inserted = Assert.Single(repo.InsertedTasks);
+        var nextDue = inserted.LastExecution.AddMinutes(inserted.Interval);
+        Assert.True(nextDue > DateTime.UtcNow.AddMinutes(1400), $"scan must wait one interval, nextDue={nextDue:u}");
+        Assert.True(inserted.LastExecution <= DateTime.UtcNow.AddMinutes(1));
+        Assert.Equal(inserted.LastExecution, inserted.LastStartTime);
+        Assert.True(logger.HasMessageContaining("Failed to capture"));
+    }
+
+    [Fact]
+    public void InitializeTasks_CaptureFailed_ExistingRowIsStillUsed()
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 1440, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider);
+        var repo = new StubScheduledTaskRepository { AllFailuresRemaining = 1 };
+        var lastRun = DateTime.UtcNow.AddHours(-2);
+        var existing = new ScheduledTask
+        {
+            Id = 5,
+            TypeName = typeof(UniqueSinglesScanCommand).FullName!,
+            Interval = 1440,
+            Priority = CommandPriority.Low,
+            LastExecution = lastRun,
+            LastStartTime = lastRun
+        };
+        repo.AllTasks.Add(existing);
+        using var logger = new TestLogger();
+
+        var service = new ScheduledTaskService(factory, repo, new CacheManager(), logger.Logger);
+        service.CaptureExistingTasks();
+        service.InitializeTasks();
+
+        Assert.Empty(repo.InsertedTasks);
+        Assert.Equal(lastRun, existing.LastExecution);
+    }
+
+    [Fact]
+    public void InitializeTasks_FailedInsert_KeepsCapturedRunTimeForRetry()
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 1440, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider);
+        var repo = new StubScheduledTaskRepository();
+        using var logger = new TestLogger();
+
+        var lastRun = DateTime.UtcNow.AddHours(-1);
+        repo.AllTasks.Add(new ScheduledTask
+        {
+            Id = 7,
+            TypeName = typeof(UniqueSinglesScanCommand).FullName!,
+            Interval = 1440,
+            Priority = CommandPriority.Low,
+            LastExecution = lastRun,
+            LastStartTime = lastRun
+        });
+
+        var service = new ScheduledTaskService(factory, repo, new CacheManager(), logger.Logger);
+        service.CaptureExistingTasks();
+        repo.AllTasks.Clear();
+        repo.InsertFailuresRemaining = 1;
+
+        service.InitializeTasks(); // insert throws; InitializeTasks logs and continues
+        Assert.Empty(repo.InsertedTasks);
+
+        service.InitializeTasks(); // retry must still know the previous run time
+
+        var inserted = Assert.Single(repo.InsertedTasks);
+        Assert.Equal(lastRun, inserted.LastExecution);
+    }
+
+    [Fact]
+    public void InitializeTasks_ScheduledTaskLookupFails_DoesNotInsertDuplicateRow()
+    {
+        var provider = new StubScheduledTaskProvider(
+            typeof(UniqueSinglesScanCommand), 1440, CommandPriority.Low);
+        var factory = new StubMetadataFactory(provider);
+        var repo = new StubScheduledTaskRepository();
+        repo.AllTasks.Add(new ScheduledTask
+        {
+            Id = 3,
+            TypeName = typeof(UniqueSinglesScanCommand).FullName!,
+            Interval = 1440,
+            Priority = CommandPriority.Low,
+            LastExecution = DateTime.UtcNow.AddHours(-1)
+        });
+        using var logger = new TestLogger();
+
+        var service = new ScheduledTaskService(factory, repo, new CacheManager(), logger.Logger);
+        repo.AllFailuresRemaining = int.MaxValue; // the row exists but reads fail
+
+        service.InitializeTasks();
+
+        Assert.Empty(repo.InsertedTasks);
+        Assert.Single(repo.AllTasks);
+        Assert.True(logger.HasMessageContaining("Failed to query scheduled tasks"));
+    }
+
+    [Fact]
     public void Starter_HandlesApplicationStartedAfterTaskManager()
     {
         var method = typeof(ScheduledTaskServiceStarter).GetMethod(
@@ -660,10 +773,31 @@ public class ScheduledTaskServiceTests
         public List<ScheduledTask> UpdatedTasks { get; } = new();
         public List<ScheduledTask> DeletedTasks { get; } = new();
 
-        public IEnumerable<ScheduledTask> All() => AllTasks;
+        /// <summary>Number of upcoming All() calls that throw; int.MaxValue fails them all.</summary>
+        public int AllFailuresRemaining { get; set; }
+
+        /// <summary>Number of upcoming Insert() calls that throw.</summary>
+        public int InsertFailuresRemaining { get; set; }
+
+        public IEnumerable<ScheduledTask> All()
+        {
+            if (AllFailuresRemaining > 0)
+            {
+                if (AllFailuresRemaining != int.MaxValue) AllFailuresRemaining--;
+                throw new InvalidOperationException("Simulated database read failure");
+            }
+
+            return AllTasks;
+        }
 
         public ScheduledTask Insert(ScheduledTask model)
         {
+            if (InsertFailuresRemaining > 0)
+            {
+                InsertFailuresRemaining--;
+                throw new InvalidOperationException("Simulated database write failure");
+            }
+
             model.Id = AllTasks.Count + 100;
             AllTasks.Add(model);
             InsertedTasks.Add(model);

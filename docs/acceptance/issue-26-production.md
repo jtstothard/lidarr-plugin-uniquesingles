@@ -48,6 +48,11 @@ PR #56 (issue #26) delivers eager pre-grab unmonitoring through
   or unmatched catalog track keeps the single monitored.
 - The logic triggers no searches and no grabs of its own.
 
+> Correction (documentation truth pass): "before they can be grabbed" above states the
+> intent, not a guarantee. Lidarr's own post-refresh search and artist-add monitoring can
+> still grab a single the plugin just unmonitored; the real contract is in
+> `docs/eager-unmonitor.md` ("What the unmonitor guarantees, and what it does not").
+
 Test evidence: **326/326** suite (25 new). Existing protections are
 unchanged: revalidation before unmonitor and every deletion,
 survivor/exclusive-content protections, Tier-3 `FlagOnly` semantics and
