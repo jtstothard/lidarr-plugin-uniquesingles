@@ -46,6 +46,7 @@ public class SingleCleanupService : ISingleCleanupService
     private readonly IMediaFileService _mediaFileService;
     private readonly IDeleteMediaFiles _deleteMediaFiles;
     private readonly ICleanupHistoryRecorder _historyRecorder;
+    private readonly ISingleFolderCleanup _folderCleanup;
     private readonly Logger _logger;
 
     public SingleCleanupService(
@@ -54,6 +55,7 @@ public class SingleCleanupService : ISingleCleanupService
         IMediaFileService mediaFileService,
         IDeleteMediaFiles deleteMediaFiles,
         ICleanupHistoryRecorder historyRecorder,
+        ISingleFolderCleanup folderCleanup,
         Logger logger)
     {
         _albumService = albumService ?? throw new ArgumentNullException(nameof(albumService));
@@ -61,6 +63,7 @@ public class SingleCleanupService : ISingleCleanupService
         _mediaFileService = mediaFileService ?? throw new ArgumentNullException(nameof(mediaFileService));
         _deleteMediaFiles = deleteMediaFiles ?? throw new ArgumentNullException(nameof(deleteMediaFiles));
         _historyRecorder = historyRecorder ?? throw new ArgumentNullException(nameof(historyRecorder));
+        _folderCleanup = folderCleanup ?? throw new ArgumentNullException(nameof(folderCleanup));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -259,6 +262,21 @@ public class SingleCleanupService : ISingleCleanupService
         foreach (var single in candidateSingles)
         {
             result += CheckAndCleanSingleWithStats(artist, single, null, comparisonTracks, options);
+        }
+
+        // Folders stranded by earlier versions, which deleted a single's audio but left its
+        // sidecars. Failures never affect the scan result.
+        try
+        {
+            _folderCleanup.SweepStrandedFolders(artist, albums);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn(
+                ex,
+                "UniqueSingles folder sweep failure: artistId={0} artist='{1}' reason=folder-sweep-failed",
+                artist.Id,
+                artist.Name);
         }
 
         return result;
@@ -1013,6 +1031,26 @@ public class SingleCleanupService : ISingleCleanupService
             finally
             {
                 guard?.Dispose();
+            }
+        }
+
+        if (allDeleted)
+        {
+            // The audio is gone, so take the recognized sidecars (NFO, cover art, lyrics) and the
+            // folder with it. Lidarr's own empty-folder cleanup skips the folder while sidecars
+            // keep it non-empty. Failures never change the cleanup result.
+            try
+            {
+                _folderCleanup.RemoveLeftovers(artist, single, files);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn(
+                    ex,
+                    "UniqueSingles folder cleanup failure: artistId={0} singleId={1} single='{2}' reason=folder-cleanup-failed",
+                    artist.Id,
+                    single.Id,
+                    single.Title);
             }
         }
 
