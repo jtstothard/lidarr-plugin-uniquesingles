@@ -48,7 +48,10 @@ When changing the supported Lidarr release, update the version/digests in
 `LidarrReferences.targets` and the assembly-version guard in `AssemblySmokeTests.cs`
 read that property. `PluginTargetFramework` (default `net8.0`) sets the framework
 and the release ZIP name, because Lidarr installs the asset named for its own .NET
-version. Verify the required plugin
+version. Until a native `net10.0` build exists (it needs a Lidarr 4.x release to
+pin), the release job also publishes the `net8.0` ZIP as `….net10.0.zip` so Lidarr
+4.x can install and update the plugin; the `host-smoke` nightly leg, which gates
+releases, is what qualifies that package on Lidarr 4. Verify the required plugin
 APIs and the full suite against the actual downloaded binaries. NuGet audit
 checks cover restored packages; they do not inventory the binaries in the
 downloaded Lidarr archive.
