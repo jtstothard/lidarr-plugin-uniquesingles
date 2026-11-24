@@ -18,7 +18,7 @@ namespace UniqueSingles.Test;
 /// Eager pre-grab unmonitor (#26): a monitored single with no downloaded files whose every
 /// catalog track is Tier-1/Tier-2 redundant against downloaded library albums is unmonitored
 /// at the album lifecycle point where it became grabbable (metadata refresh, add, refresh,
-/// monitoring edit) — before any grab — while every cleanup-path protection stays intact:
+/// monitoring edit) — ahead of grabs, best effort — while every cleanup-path protection stays intact:
 /// #17 whole-release protection (any unmatched catalog track, downloaded or not, keeps the
 /// single monitored), Tier-3 FlagOnly semantics, the cleanup comparison-pool selection, and
 /// no interference with releases that have downloaded content.

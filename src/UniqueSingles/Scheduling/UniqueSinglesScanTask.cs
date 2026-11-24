@@ -13,8 +13,10 @@ namespace NzbDrone.Core.Plugins
 {
     /// <summary>
     /// Metadata-provider-backed scheduled task for full-library redundant single scanning.
-    /// Inherits ScheduledTaskBase (which inherits MetadataBase) to appear in Settings > Metadata
-    /// while providing a scheduled task visible in Settings > Tasks.
+    /// Inherits ScheduledTaskBase (which inherits MetadataBase) so the enable switch and settings
+    /// live in Settings > Metadata, while the scheduled task itself is listed by Lidarr under
+    /// System > Tasks > Scheduled as "Unique Singles Scan" (Lidarr derives that name from the
+    /// command type, UniqueSinglesScanCommand).
     ///
     /// This is the sole IExecute&lt;UniqueSinglesScanCommand&gt; implementation — all scan
     /// execution is routed through here, delegating to ISingleCleanupService.ScanArtistWithOptions

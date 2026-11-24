@@ -202,8 +202,8 @@ public static class TrackMatcher
 
             isRedundant = true;
             summaryReason = trackResults.Count == 1
-                ? $"All tracks matched. Tier 1: {tier1Count}, Tier 2: {tier2Count}. Safe to unmonitor and delete."
-                : $"All {trackResults.Count} tracks matched (Tier 1: {tier1Count}, Tier 2: {tier2Count}). Single is fully redundant — safe to unmonitor and delete.";
+                ? $"All tracks matched. Tier 1: {tier1Count}, Tier 2: {tier2Count}. Redundant."
+                : $"All {trackResults.Count} tracks matched (Tier 1: {tier1Count}, Tier 2: {tier2Count}). Single is fully redundant.";
         }
         else
         {

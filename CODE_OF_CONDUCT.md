@@ -40,9 +40,11 @@ public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the project maintainer via a GitHub Security Advisory (see
-[SECURITY.md](SECURITY.md)) or by opening a private communication channel
-noted in the repository. All complaints will be reviewed and investigated
+reported to the project maintainer privately through a
+[GitHub Security Advisory](https://github.com/jtstothard/lidarr-plugin-uniquesingles/security/advisories/new)
+(see [SECURITY.md](SECURITY.md)); say in the report that it is a Code of Conduct
+concern, not a vulnerability. Please do not report conduct issues in public
+issues or pull requests. All complaints will be reviewed and investigated
 promptly and fairly.
 
 ## Attribution

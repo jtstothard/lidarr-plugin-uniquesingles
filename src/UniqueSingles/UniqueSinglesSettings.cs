@@ -61,7 +61,7 @@ public class UniqueSinglesSettings : IProviderConfig
     [FieldDefinition(6, Label = "Exact FLAC cleanup", Type = FieldType.Checkbox, HelpText = "Explicitly allow whole-release cleanup after complete exact verification and immediate content/source revalidation. Defaults off. Requires FFmpeg.")]
     public bool ExactAudioCleanup { get; set; }
 
-    [FieldDefinition(7, Label = "Eagerly unmonitor redundant singles", Type = FieldType.Checkbox, HelpText = "Unmonitor a monitored single with no downloaded files as soon as every catalog track is Tier-1/Tier-2 redundant against your downloaded library — at metadata refresh, add, and monitoring change, before anything is grabbed. Prevents redundant downloads. On by default; never deletes files.")]
+    [FieldDefinition(7, Label = "Eagerly unmonitor redundant singles", Type = FieldType.Checkbox, HelpText = "Unmonitor a monitored single with no downloaded files as soon as every catalog track is Tier-1/Tier-2 redundant against your downloaded library — at metadata refresh, add, and monitoring change, so it is normally not grabbed. Best effort: Lidarr can still grab a single in some paths, and one that downloads anyway is cleaned up by the import-time cleanup (needs the Connect entry) or the scan, unless you fetched it yourself (interactive search or a Search you clicked) after the unmonitor. On by default; never deletes files.")]
     public bool EagerUnmonitorRedundantSingles { get; set; } = true;
 
     /// <summary>

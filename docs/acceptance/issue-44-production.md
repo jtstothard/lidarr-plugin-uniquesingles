@@ -38,9 +38,11 @@ PR #47 (issue #44) follow-ups to the exact-audio matching delivery (PR #43):
   `reviewPriority` label) instead of a hard-coded literal; actual destructive
   grants stay on the `decision=revalidated` lines.
 - `keepExclusive` summary aggregate so exclusive-content keeps are counted
-  separately instead of folded into `skipped`, letting summaries reconcile
-  with per-release `outcome=` lines, and completion wording clarifying that
-  `cleaned` counts releases unmonitored (deletion not guaranteed).
+  separately instead of folded into `skipped`, and completion wording clarifying that
+  `cleaned` counts releases unmonitored (deletion not guaranteed). (Correction: this
+  receipt originally said the counters then reconcile with per-release `outcome=`
+  lines. That holds only for releases with downloaded files that reach the match
+  decision; see `docs/exact-flac-analysis.md` for the exceptions.)
 - Dispatcher cancellation wiring into scan/import audio analysis
   (`AudioAnalysisCancellation` hub), so a scan stops before the next artist
   and decoder work returns unavailable evidence; settings precedence is
