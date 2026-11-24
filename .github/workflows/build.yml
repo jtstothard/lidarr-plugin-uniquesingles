@@ -87,7 +87,7 @@ jobs:
           dotnet test tests/UniqueSingles.Test/UniqueSingles.Test.csproj -c Release --no-build --verbosity normal
 
       - name: Upload plugin package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
         with:
           name: plugin-package
@@ -106,7 +106,7 @@ jobs:
       contents: write
     steps:
       - name: Download plugin package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: plugin-package
           path: release
@@ -136,7 +136,8 @@ jobs:
           echo "make_latest=$make_latest" >> "$GITHUB_OUTPUT"
 
       - name: Upload Release Asset
-        uses: softprops/action-gh-release@v3
+        # Third-party action holding the write token: pinned to a commit SHA (see dependabot.yml).
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: ${{ env.PLUGIN_VERSION }}
           name: ${{ env.PLUGIN_VERSION }}
