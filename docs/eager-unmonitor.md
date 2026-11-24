@@ -51,7 +51,10 @@ Protections unchanged from the cleanup path:
   downloaded or not (an exclusive undownloaded B-side) — keeps the single monitored.
 - Comparison sources are downloaded tracks on monitored comparison-type releases only.
 - The unmonitor is written to Lidarr History (`Plugin=UniqueSingles`, `Action=Unmonitor`)
-  exactly like cleanup-path unmonitors; a history write failure never affects the decision.
+  exactly like cleanup-path unmonitors. The row is written *before* the unmonitor, because the
+  leak backstop (below) depends on it: if it cannot be written the single stays monitored
+  (`reason=unmonitor-history-write-failed`) and the next event or scan retries. If the
+  unmonitor itself then fails, an `UnmonitorReverted` row supersedes the `Unmonitor` row.
 - Fail-safe everywhere: missing tracks, lookup failures, or artist-resolution failures keep
   the single monitored.
 - The service takes no command-queue, search, download, or deletion dependencies, so it can
@@ -78,19 +81,62 @@ An in-flight single stays monitored (`reason=download-in-flight`), and the impor
 self-check cleans its files once they land. Delay-profile pending releases are not counted:
 RSS sync re-checks them against the monitored flag, so unmonitoring cancels them.
 
-Some downloads still get past the unmonitor (a grab dispatched just before it, or a Lidarr
-search that ignores the monitored flag). The cleanup paths therefore no longer skip every
-unmonitored release. A release whose latest plugin History row is the plugin's own
-`Unmonitor` and which now has downloaded files is evaluated under the normal cleanup rules
-(Tier-3 action, exact-audio, #17 protection) and its files deleted when they are redundant
-(`reason=plugin-unmonitored-has-files`). A release with no plugin row was unmonitored by the
-user or by Lidarr and is never touched.
+Some downloads still get past the unmonitor: a grab dispatched just before it, or an RSS
+sync that decided on the monitored state it read and sent the release to the client just
+after. The cleanup paths therefore no longer skip every unmonitored release. The **leak
+backstop** evaluates a release under the normal cleanup rules (Tier-3 action, exact-audio,
+#17 protection) and deletes its files when they are redundant
+(`reason=plugin-unmonitored-has-files`) only when all of the following hold:
+
+1. its latest plugin History row is the plugin's own `Unmonitor`;
+2. every file it now holds traces, through Lidarr's `TrackFileImported` row (`FileId`,
+   `DownloadId`), to a `Grabbed` row for the same download; and
+3. each of those grabs was automatic and raced the unmonitor: its `ReleaseSource` is not
+   `InteractiveSearch` or `UserInvokedSearch`, and it was recorded no later than 5 minutes
+   after the `Unmonitor` row.
+
+Anything else keeps the files (`reason=leak-backstop-not-race`). That is deliberate: Lidarr
+lets the user grab an unmonitored album, and RSS sync would reject one, so files that arrive
+well after the unmonitor were almost always fetched by the user. Concretely, the backstop keeps:
+
+- grabs from interactive search, or from a Search the user clicked (Lidarr records these as
+  `ReleaseSource=InteractiveSearch` / `UserInvokedSearch` on the `Grabbed` row, set in
+  `DownloadDecisionMaker` from the search criteria);
+- any grab recorded more than 5 minutes after the unmonitor, whatever its source;
+- manual imports of files that belong to no download (their `TrackFileImported` row has no
+  `DownloadId`), and files from a disk scan (Lidarr writes no import row for those);
+- files whose import or grab row is missing, and any History lookup failure.
+
+Limitation: Lidarr's History does not record whether an import was manual. A manual import
+of a *tracked* download (Activity → Queue → Manual Import), or a folder import that Lidarr
+matches to an outstanding grab, carries that download's `DownloadId`, so the grab rule
+decides it like an automatic import.
+
+The backstop re-reads its inputs immediately before deleting: the plugin's provenance row, the
+stored monitored flag, and the files' grab provenance. Matching and exact-audio analysis can
+take minutes, and a user re-monitor or fetch in that time aborts the delete
+(`reason=backstop-state-changed`).
+
+A release with no plugin row was unmonitored by the user or by Lidarr and is never touched.
+Plugin History rows only exist since the History audit was added (#47); singles the plugin
+unmonitored before that have no row, so files that leaked into them are not cleaned by the
+backstop.
 
 If the user re-monitors a single the plugin unmonitored (the album monitoring toggle or
 the album editor, which publish `AlbumEditedEvent`), the eager service records a
-`UserRemonitor` History row. From then on neither the eager service nor the cleanup paths
+`UserRemonitor` History row, even when the single's artist cannot be resolved (the row is
+keyed by album). From then on neither the eager service nor the cleanup paths
 unmonitor that release or delete its files. Lidarr's own bulk monitoring writes
 (`AlbumMonitoredService` on artist add) publish no edit event and do not count as the user.
+
+A `UserRemonitor` row is effectively permanent. Unmonitoring the single again by hand writes
+no plugin row, so the latest plugin row stays `UserRemonitor` and the plugin keeps leaving the
+single alone. There is no setting or UI action to hand it back to the plugin; the only way is
+to delete the plugin's History rows for that album from Lidarr's database.
+
+Plugin rows are found by their `Plugin`/`Action` Data keys. Lidarr stores History Data as JSON
+with a camelCase key policy, so rows read back from the database carry `plugin`/`action`; the
+plugin matches these keys case-insensitively.
 
 ## Why not a grab-time hook (`NotificationBase.OnGrab`)
 

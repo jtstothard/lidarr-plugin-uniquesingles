@@ -1100,8 +1100,11 @@ public partial class SingleCleanupServiceTests
 
         public Album UpdateAlbum(Album album) => NotUsed<Album>();
 
+        public List<string>? Sequence { get; set; }
+
         public void SetAlbumMonitored(int albumId, bool monitored)
         {
+            Sequence?.Add($"set-monitored:{albumId}:{monitored}");
             SetMonitoredCalls.Add((albumId, monitored));
             if (ThrowOnSetAlbumMonitored)
             {
@@ -1329,23 +1332,65 @@ public partial class SingleCleanupServiceTests
     internal sealed class RecordingHistoryRecorder : ICleanupHistoryRecorder
     {
         public bool ThrowOnRecord { get; set; }
+        public bool FailRecord { get; set; }
         public List<(int ArtistId, int AlbumId, string Reason)> Unmonitors { get; } = new();
+        public List<int> Reverted { get; } = new();
         public List<int> UserRemonitors { get; } = new();
         public Dictionary<int, UnmonitorProvenance> Provenance { get; } = new();
+
+        /// <summary>Albums whose current files all came from a grab that raced the unmonitor.</summary>
+        public HashSet<int> PreUnmonitorGrabAlbumIds { get; } = new();
+        public List<(int AlbumId, IReadOnlyCollection<int> FileIds)> GrabChecks { get; } = new();
+
+        /// <summary>Runs after each FilesCameFromPreUnmonitorGrab result is decided, with its 1-based call number.</summary>
+        public Action<int>? OnGrabCheck { get; set; }
+
+        /// <summary>Records the order of history writes relative to other recorded actions.</summary>
+        public List<string>? Sequence { get; set; }
 
         public UnmonitorProvenance GetProvenance(int albumId) =>
             Provenance.TryGetValue(albumId, out var provenance) ? provenance : UnmonitorProvenance.None;
 
-        public void RecordUserRemonitor(Artist artist, Album single) => UserRemonitors.Add(single.Id);
-
-        public void RecordUnmonitor(Artist artist, Album single, string reason)
+        public bool RecordUserRemonitor(Artist? artist, Album single)
         {
+            UserRemonitors.Add(single.Id);
+            return true;
+        }
+
+        public bool RecordUnmonitor(Artist artist, Album single, string reason)
+        {
+            Sequence?.Add($"history:unmonitor:{single.Id}");
             if (ThrowOnRecord)
             {
                 throw new InvalidOperationException("history insert failed");
             }
 
+            if (FailRecord)
+            {
+                return false;
+            }
+
             Unmonitors.Add((artist.Id, single.Id, reason ?? string.Empty));
+            return true;
+        }
+
+        public bool RecordUnmonitorReverted(Artist artist, Album single)
+        {
+            // A reverted unmonitor leaves no live Unmonitor row.
+            Reverted.Add(single.Id);
+            Unmonitors.RemoveAll(u => u.AlbumId == single.Id);
+            return true;
+        }
+
+        public bool FilesCameFromPreUnmonitorGrab(int albumId, IReadOnlyCollection<int> trackFileIds, out string detail)
+        {
+            GrabChecks.Add((albumId, trackFileIds));
+            var race = PreUnmonitorGrabAlbumIds.Contains(albumId) && trackFileIds.Count > 0;
+            // State changes made here are seen from the next call on, as if they happened
+            // after this check returned (during matching or exact-audio analysis).
+            OnGrabCheck?.Invoke(GrabChecks.Count);
+            detail = race ? "all-files-from-grabs-before-unmonitor" : "fileId=0 grabbed-after-unmonitor";
+            return race;
         }
     }
 

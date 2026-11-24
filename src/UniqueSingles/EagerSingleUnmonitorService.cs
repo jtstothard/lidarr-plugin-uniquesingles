@@ -159,14 +159,31 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
                 var provenance = _historyRecorder.GetProvenance(album.Id);
                 if (provenance == UnmonitorProvenance.PluginUnmonitored)
                 {
+                    // The row is keyed by album, so it is written even when the artist cannot be
+                    // resolved: skipping it would leave the latest plugin row an Unmonitor on a
+                    // monitored single, which the cleanup paths would unmonitor and delete again.
                     var artist = ResolveArtist(album);
-                    if (artist != null)
+                    if (artist == null)
                     {
-                        _historyRecorder.RecordUserRemonitor(artist, album);
+                        _logger.Warn(
+                            "UniqueSingles eager: user re-monitored a single the plugin unmonitored, but its artist could not be resolved; recording the re-monitor by album and protecting the single. albumId={0} single='{1}' reason=remonitor-artist-unresolved",
+                            album.Id,
+                            album.Title);
+                    }
+
+                    if (_historyRecorder.RecordUserRemonitor(artist, album))
+                    {
                         _logger.Info(
                             "UniqueSingles eager: user re-monitored a single the plugin unmonitored; it will not be unmonitored or deleted again. artistId={0} artist='{1}' singleId={2} single='{3}' reason=user-remonitored",
-                            artist.Id,
-                            artist.Name,
+                            artist?.Id,
+                            artist?.Name,
+                            album.Id,
+                            album.Title);
+                    }
+                    else
+                    {
+                        _logger.Warn(
+                            "UniqueSingles eager: user re-monitored a single the plugin unmonitored, but the UserRemonitor History row could not be written; a later cleanup may unmonitor it again. albumId={0} single='{1}' reason=remonitor-record-failed",
                             album.Id,
                             album.Title);
                     }
@@ -315,6 +332,36 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
             return false;
         }
 
+        // The History row is written before the unmonitor: it is what lets the leak backstop
+        // clean a download that lands after it, so a single whose row cannot be written stays
+        // monitored (the next lifecycle event or scan retries).
+        bool recorded;
+        try
+        {
+            recorded = _historyRecorder.RecordUnmonitor(artist, single, $"Eager pre-grab unmonitor (trigger={trigger}): {check.SummaryReason}");
+        }
+        catch (Exception historyEx)
+        {
+            _logger.Warn(
+                historyEx,
+                "UniqueSingles history: action=unmonitor-record-failed artistId={0} albumId={1} reason=history-recorder-threw",
+                artist.Id,
+                single.Id);
+            recorded = false;
+        }
+
+        if (!recorded)
+        {
+            _logger.Warn(
+                "UniqueSingles eager keep: the History row could not be written, and without it a download landing later could not be cleaned; single stays monitored. artistId={0} artist='{1}' singleId={2} single='{3}' trigger={4} reason=unmonitor-history-write-failed",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title,
+                trigger);
+            return false;
+        }
+
         try
         {
             _albumService.SetAlbumMonitored(single.Id, false);
@@ -329,6 +376,19 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
                 single.Id,
                 single.Title,
                 trigger);
+            try
+            {
+                _historyRecorder.RecordUnmonitorReverted(artist, single);
+            }
+            catch (Exception revertEx)
+            {
+                _logger.Warn(
+                    revertEx,
+                    "UniqueSingles history: action=unmonitor-reverted-record-failed artistId={0} albumId={1} reason=history-recorder-threw",
+                    artist.Id,
+                    single.Id);
+            }
+
             return false;
         }
 
@@ -341,20 +401,6 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
             single.Title,
             trigger,
             check.SummaryReason);
-
-        // Lidarr History audit row; recorder failures never affect the decision.
-        try
-        {
-            _historyRecorder.RecordUnmonitor(artist, single, $"Eager pre-grab unmonitor (trigger={trigger}): {check.SummaryReason}");
-        }
-        catch (Exception historyEx)
-        {
-            _logger.Warn(
-                historyEx,
-                "UniqueSingles history: action=unmonitor-record-failed artistId={0} albumId={1} reason=history-recorder-threw",
-                artist.Id,
-                single.Id);
-        }
 
         return true;
     }
