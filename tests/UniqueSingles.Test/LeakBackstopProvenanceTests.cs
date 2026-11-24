@@ -7,10 +7,12 @@ using Xunit;
 namespace UniqueSingles.Test;
 
 /// <summary>
-/// The leak backstop only cleans files that raced the plugin's unmonitor: every file must trace
-/// (TrackFileImported → Grabbed by DownloadId) to an automatic grab recorded at or before the
-/// plugin's latest Unmonitor row. A user's later fetch (interactive or manual search, a grab
-/// after the unmonitor, a manual import) is kept, as is anything whose origin is unknown.
+/// The leak backstop classifies files by the ReleaseSource of the grab they trace to
+/// (TrackFileImported → Grabbed by DownloadId). Automatic grabs (Rss, Search, ReleasePush,
+/// Unknown, missing or unrecognised) are cleaned whenever they ran: Lidarr searches long after an
+/// unmonitor. User grabs (InteractiveSearch, UserInvokedSearch) are kept when they postdate the
+/// plugin's latest Unmonitor row and cleaned when they predate it. An import without a grab and
+/// anything whose origin is unknown are kept.
 /// History rows are built in the form Lidarr reads them back from the database: Data keys are
 /// camelCased by its JSON dictionary-key policy.
 /// </summary>
@@ -25,14 +27,21 @@ public partial class SingleCleanupServiceTests
     [InlineData(-60, "Search", true)]                 // race: automatic search before the unmonitor
     [InlineData(-60, null, true)]                     // grab row without a ReleaseSource key
     [InlineData(0, "Rss", true)]                      // contemporaneous
-    [InlineData(3, "Rss", true)]                      // within the grab/unmonitor tolerance
-    [InlineData(2880, "Rss", false)]                  // automatic grab two days after the unmonitor
-    [InlineData(2880, "Search", false)]
+    [InlineData(3, "Rss", true)]
+    [InlineData(2880, "Rss", true)]                   // automatic grabs are cleaned whenever they ran
+    [InlineData(2880, "Search", true)]                // post-refresh, Missing or failed-download re-search
+    [InlineData(2880, "ReleasePush", true)]
+    [InlineData(2880, "Unknown", true)]
+    [InlineData(2880, null, true)]
+    [InlineData(2880, "SomethingNew", true)]          // unrecognised values count as automatic
     [InlineData(2880, "InteractiveSearch", false)]    // user grab from interactive search
     [InlineData(2880, "UserInvokedSearch", false)]    // user clicked Search on the single
-    [InlineData(-60, "InteractiveSearch", false)]     // user grab, even before the unmonitor
-    [InlineData(-60, "UserInvokedSearch", false)]
-    public void LeakBackstop_CleansOnlyFilesFromAGrabThatRacedTheUnmonitor(int grabMinutesAfterUnmonitor, string? releaseSource, bool expectCleaned)
+    [InlineData(2880, "interactiveSearch", false)]    // matched case-insensitively
+    [InlineData(10, "InteractiveSearch", false)]      // just past the tolerance
+    [InlineData(3, "InteractiveSearch", true)]        // within the grab/unmonitor tolerance
+    [InlineData(-60, "InteractiveSearch", true)]      // user grab before the unmonitor raced it
+    [InlineData(-60, "UserInvokedSearch", true)]
+    public void LeakBackstop_ClassifiesFilesByTheirGrabsReleaseSource(int grabMinutesAfterUnmonitor, string? releaseSource, bool expectCleaned)
     {
         var repository = ExactAudioFollowupsTests.HistoryRepositoryProxy.Create();
         repository.Rows.Add(PluginRow(1, 200, UnmonitoredAt, "Unmonitor"));
@@ -123,6 +132,126 @@ public partial class SingleCleanupServiceTests
         Assert.Empty(deleteMediaFiles.DeletedFiles);
     }
 
+    [Fact]
+    public void LeakBackstop_AutomaticSearchGrabAfterTheUnmonitor_IsCleaned()
+    {
+        // Lidarr's post-refresh AlbumSearchCommand runs for album ids captured while the single
+        // was monitored, after the plugin unmonitored it, and searches skip the monitored check.
+        var repository = ExactAudioFollowupsTests.HistoryRepositoryProxy.Create();
+        repository.Rows.Add(PluginRow(1, 200, UnmonitoredAt, "Unmonitor"));
+        repository.Rows.Add(GrabRow(2, 200, UnmonitoredAt.AddMinutes(40), "dl-1", "Search"));
+        repository.Rows.Add(ImportRow(3, 200, UnmonitoredAt.AddMinutes(55), fileId: 21, downloadId: "dl-1"));
+        var (single, deleteMediaFiles, _, service) = BackstopScenario(repository);
+
+        var result = service.ScanArtistWithOptions(Artist(), AlbumOptions());
+
+        Assert.Equal(1, result.Cleaned);
+        Assert.Equal(new[] { 21 }, deleteMediaFiles.DeletedFiles.Select(d => d.TrackFile.Id));
+        Assert.False(single.Monitored);
+    }
+
+    [Fact]
+    public void LeakBackstop_InteractiveGrabAfterTheUnmonitor_IsKept()
+    {
+        var repository = ExactAudioFollowupsTests.HistoryRepositoryProxy.Create();
+        repository.Rows.Add(PluginRow(1, 200, UnmonitoredAt, "Unmonitor"));
+        repository.Rows.Add(GrabRow(2, 200, UnmonitoredAt.AddMinutes(40), "dl-1", "InteractiveSearch"));
+        repository.Rows.Add(ImportRow(3, 200, UnmonitoredAt.AddMinutes(55), fileId: 21, downloadId: "dl-1"));
+        var (_, deleteMediaFiles, logger, service) = BackstopScenario(repository);
+
+        var result = service.ScanArtistWithOptions(Artist(), AlbumOptions());
+
+        Assert.Equal(0, result.Cleaned);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+        Assert.Contains(logger.InfoMessages, m => m.Contains("user-grab-after-unmonitor", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LeakBackstop_AutomaticGrabBeforeTheUnmonitor_IsCleaned()
+    {
+        var repository = ExactAudioFollowupsTests.HistoryRepositoryProxy.Create();
+        repository.Rows.Add(PluginRow(1, 200, UnmonitoredAt, "Unmonitor"));
+        repository.Rows.Add(GrabRow(2, 200, UnmonitoredAt.AddMinutes(-20), "dl-1", "Rss"));
+        repository.Rows.Add(ImportRow(3, 200, UnmonitoredAt.AddMinutes(15), fileId: 21, downloadId: "dl-1"));
+        var (_, deleteMediaFiles, _, service) = BackstopScenario(repository);
+
+        var result = service.ScanArtistWithOptions(Artist(), AlbumOptions());
+
+        Assert.Equal(1, result.Cleaned);
+        Assert.Single(deleteMediaFiles.DeletedFiles);
+    }
+
+    [Theory]
+    [InlineData("InteractiveSearch", true)]
+    [InlineData("UserInvokedSearch", true)]
+    [InlineData("userinvokedsearch", true)]
+    [InlineData(" InteractiveSearch ", true)]
+    [InlineData("Rss", false)]
+    [InlineData("Search", false)]
+    [InlineData("ReleasePush", false)]
+    [InlineData("Unknown", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void HistoryRecorder_OnlyInteractiveAndUserInvokedSearchesAreUserSources(string? releaseSource, bool expectUser)
+    {
+        Assert.Equal(expectUser, UniqueSinglesHistoryRecorder.IsUserReleaseSource(releaseSource));
+    }
+
+    // ── Protected state: monitored, but the latest plugin row is an Unmonitor ──
+
+    [Fact]
+    public void MonitoredSingleWithStandingPluginUnmonitorRow_IsProtectedFromCleanup()
+    {
+        // The user re-monitored the single, but the UserRemonitor row was never written (the
+        // insert failed, the artist lookup threw, or housekeeping removed a row keyed to no
+        // artist). The latest plugin row is still the Unmonitor.
+        var repository = ExactAudioFollowupsTests.HistoryRepositoryProxy.Create();
+        repository.Rows.Add(PluginRow(1, 200, UnmonitoredAt, "Unmonitor"));
+        repository.Rows.Add(GrabRow(2, 200, UnmonitoredAt.AddMinutes(-60), "dl-1", "Rss"));
+        repository.Rows.Add(ImportRow(3, 200, UnmonitoredAt.AddMinutes(10), fileId: 21, downloadId: "dl-1"));
+        repository.ThrowOnInsert = true;
+        var (single, deleteMediaFiles, logger, service) = BackstopScenario(repository);
+        single.Monitored = true;
+        using var recorderLogger = new RecordingLogger();
+        Assert.False(new UniqueSinglesHistoryRecorder(repository.AsRepository(), recorderLogger.Logger)
+            .RecordUserRemonitor(Artist(), single));
+
+        var scan = service.ScanArtistWithOptions(Artist(), AlbumOptions());
+        var selfCheck = service.CleanupSingleSelfCheckWithOptions(Artist(), single, AlbumOptions());
+
+        Assert.Equal(0, scan.Cleaned);
+        Assert.Equal(0, selfCheck.Cleaned);
+        Assert.Empty(deleteMediaFiles.DeletedFiles);
+        Assert.True(single.Monitored);
+        Assert.Contains(logger.InfoMessages, m => m.Contains("provenance=PluginUnmonitored monitored=True reason=user-remonitored", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(UnmonitorProvenance.PluginUnmonitored, true, true)]
+    [InlineData(UnmonitorProvenance.PluginUnmonitored, false, false)]
+    [InlineData(UnmonitorProvenance.UserRemonitored, false, true)]
+    [InlineData(UnmonitorProvenance.UserRemonitored, true, true)]
+    [InlineData(UnmonitorProvenance.Unknown, true, true)]
+    [InlineData(UnmonitorProvenance.None, true, false)]
+    [InlineData(UnmonitorProvenance.None, false, false)]
+    public void Provenance_ProtectsRelease(UnmonitorProvenance provenance, bool monitored, bool expectProtected)
+    {
+        Assert.Equal(expectProtected, provenance.ProtectsRelease(monitored));
+    }
+
+    [Fact]
+    public void HistoryRecorder_RecordUserRemonitor_ArtistLazyLoadThrows_ReturnsFalse()
+    {
+        var repository = ExactAudioFollowupsTests.HistoryRepositoryProxy.Create();
+        using var logger = new RecordingLogger();
+        var recorder = new UniqueSinglesHistoryRecorder(repository.AsRepository(), logger.Logger);
+        var single = Album(200, "Single", "Single");
+        single.Artist = new ThrowingLazyArtist();
+
+        Assert.False(recorder.RecordUserRemonitor(null, single));
+        Assert.Empty(repository.Rows);
+    }
+
     // ── Recheck immediately before deletion ─────────────────────────────
 
     [Fact]
@@ -177,7 +306,7 @@ public partial class SingleCleanupServiceTests
         {
             if (call == 1)
             {
-                history.PreUnmonitorGrabAlbumIds.Remove(single.Id);
+                history.CleanableGrabAlbumIds.Remove(single.Id);
             }
         };
 
@@ -350,7 +479,7 @@ public partial class SingleCleanupServiceTests
         using var logger = new RecordingLogger();
         var recorder = new UniqueSinglesHistoryRecorder(repository.AsRepository(), logger.Logger);
 
-        Assert.False(recorder.FilesCameFromPreUnmonitorGrab(200, new[] { 21 }, out var detail));
+        Assert.False(recorder.FilesCameFromCleanableGrab(200, new[] { 21 }, out var detail));
         Assert.Equal("lookup-failed", detail);
     }
 
@@ -367,10 +496,16 @@ public partial class SingleCleanupServiceTests
         using var logger = new RecordingLogger();
         var recorder = new UniqueSinglesHistoryRecorder(repository.AsRepository(), logger.Logger);
 
-        Assert.True(recorder.FilesCameFromPreUnmonitorGrab(200, new[] { 21 }, out _));
+        Assert.True(recorder.FilesCameFromCleanableGrab(200, new[] { 21 }, out _));
     }
 
     // ── helpers ───────────────────────────────────────────────────────────
+
+    /// <summary>An Album.Artist whose lazy load fails, as a database-backed one can.</summary>
+    private sealed class ThrowingLazyArtist : NzbDrone.Core.Datastore.LazyLoaded<Artist>
+    {
+        public override void LazyLoad() => throw new InvalidOperationException("lazy load failed");
+    }
 
     private static (Album Single, RecordingDeleteMediaFiles Delete, RecordingLogger Logger, SingleCleanupService Service) BackstopScenario(
         ExactAudioFollowupsTests.HistoryRepositoryProxy repository,
@@ -416,7 +551,7 @@ public partial class SingleCleanupServiceTests
         var logger = new RecordingLogger();
         var history = new RecordingHistoryRecorder();
         history.Provenance[single.Id] = UnmonitorProvenance.PluginUnmonitored;
-        history.PreUnmonitorGrabAlbumIds.Add(single.Id);
+        history.CleanableGrabAlbumIds.Add(single.Id);
         var service = Service(albumService, trackService, mediaFileService, deleteMediaFiles, logger, history);
         return (single, albumService, deleteMediaFiles, history, logger, service);
     }

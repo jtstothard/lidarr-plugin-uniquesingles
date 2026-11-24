@@ -287,11 +287,11 @@ public class SingleCleanupService : ISingleCleanupService
         var unmonitorFailures = 0;
         var deleteFailures = 0;
 
-        // Leak backstop: a release the plugin unmonitored as redundant can still receive files
-        // from a download that raced the unmonitor (grabbed before it, imported after). Those
-        // files are evaluated under the normal cleanup rules instead of being skipped. Files the
-        // user fetched afterwards (an interactive or manual search, a manual import) are kept,
-        // as are releases unmonitored by the user or by Lidarr (no plugin History row).
+        // Leak backstop: a release the plugin unmonitored as redundant can still receive files,
+        // from a download that raced the unmonitor or from an automatic search Lidarr ran after
+        // it. Those files are evaluated under the normal cleanup rules instead of being skipped.
+        // Files from a user-initiated grab after the unmonitor, or from an import without a grab,
+        // are kept, as are releases unmonitored by the user or by Lidarr (no plugin History row).
         var pluginUnmonitored = false;
         if (!single.Monitored)
         {
@@ -343,7 +343,7 @@ public class SingleCleanupService : ISingleCleanupService
             if (!LeakBackstopApplies(artist, single, out var backstopDetail))
             {
                 _logger.Info(
-                    "UniqueSingles leak backstop keep: files in a release the plugin unmonitored did not come from a grab that raced the unmonitor; the user fetched them or their origin is unknown. artistId={0} artist='{1}' singleId={2} single='{3}' downloadedTracks={4} detail='{5}' reason=leak-backstop-not-race",
+                    "UniqueSingles leak backstop keep: files in a release the plugin unmonitored did not all come from an automatic grab or a grab that predated the unmonitor; the user fetched them after it, or their origin is unknown. artistId={0} artist='{1}' singleId={2} single='{3}' downloadedTracks={4} detail='{5}' reason=leak-backstop-not-race",
                     artist.Id,
                     artist.Name,
                     single.Id,
@@ -354,7 +354,7 @@ public class SingleCleanupService : ISingleCleanupService
             }
 
             _logger.Info(
-                "UniqueSingles leak backstop: release the plugin unmonitored as redundant received files from a download that raced the unmonitor; evaluating under normal cleanup rules. artistId={0} artist='{1}' singleId={2} single='{3}' downloadedTracks={4} detail='{5}' reason=plugin-unmonitored-has-files",
+                "UniqueSingles leak backstop: release the plugin unmonitored as redundant received files from an automatic grab or a download that raced the unmonitor; evaluating under normal cleanup rules. artistId={0} artist='{1}' singleId={2} single='{3}' downloadedTracks={4} detail='{5}' reason=plugin-unmonitored-has-files",
                 artist.Id,
                 artist.Name,
                 single.Id,
@@ -962,32 +962,36 @@ public class SingleCleanupService : ISingleCleanupService
     }
 
     /// <summary>
-    /// True when the user took the release back after the plugin unmonitored it (or provenance
-    /// cannot be read). Such a release is never unmonitored or deleted by the plugin again.
+    /// True when the user took the release back after the plugin unmonitored it: a UserRemonitor
+    /// row, unreadable provenance, or a release that is monitored now although the plugin's latest
+    /// row is still an Unmonitor (its UserRemonitor row is missing; see
+    /// <see cref="UnmonitorProvenanceExtensions.ProtectsRelease"/>). Such a release is not
+    /// unmonitored or deleted by the plugin.
     /// </summary>
     private bool IsUserRemonitored(Artist artist, Album single)
     {
         var provenance = _historyRecorder.GetProvenance(single.Id);
-        if (provenance != UnmonitorProvenance.UserRemonitored && provenance != UnmonitorProvenance.Unknown)
+        if (!provenance.ProtectsRelease(single.Monitored))
         {
             return false;
         }
 
         _logger.Info(
-            "UniqueSingles cleanup skip: user re-monitored this release after the plugin unmonitored it. artistId={0} artist='{1}' singleId={2} single='{3}' provenance={4} reason=user-remonitored",
+            "UniqueSingles cleanup skip: user re-monitored this release after the plugin unmonitored it. artistId={0} artist='{1}' singleId={2} single='{3}' provenance={4} monitored={5} reason=user-remonitored",
             artist.Id,
             artist.Name,
             single.Id,
             single.Title,
-            provenance);
+            provenance,
+            single.Monitored);
         return true;
     }
 
     /// <summary>
     /// Leak-backstop gate: the files now in a plugin-unmonitored release must all have come from
-    /// a download that raced the unmonitor (an automatic grab recorded at or before the plugin's
-    /// Unmonitor row). A user's later interactive or manual search, a manual import, or files
-    /// whose origin cannot be established are kept.
+    /// an automatic grab (whenever it ran) or a user grab that predates the plugin's Unmonitor
+    /// row. Files from a user grab after the unmonitor, an import without a grab, or whose origin
+    /// cannot be established are kept.
     /// </summary>
     private bool LeakBackstopApplies(Artist artist, Album single, out string detail)
     {
@@ -1009,7 +1013,7 @@ public class SingleCleanupService : ISingleCleanupService
             return false;
         }
 
-        return _historyRecorder.FilesCameFromPreUnmonitorGrab(single.Id, files.Select(f => f.Id).ToList(), out detail);
+        return _historyRecorder.FilesCameFromCleanableGrab(single.Id, files.Select(f => f.Id).ToList(), out detail);
     }
 
     /// <summary>
