@@ -9,8 +9,8 @@ Parent specifications: [#41](https://github.com/jtstothard/lidarr-plugin-uniques
 (explicit exact cleanup), [#42](https://github.com/jtstothard/lidarr-plugin-uniquesingles/issues/42)
 (disposable macOS qualification), [#37](https://github.com/jtstothard/lidarr-plugin-uniquesingles/issues/37)
 (Linux qualification). This receipt covers two of issue #49's three criteria — the
-deletion mutation race and the native album-import/fault-stage proof. **The Windows
-qualification criterion is not met and not claimed**; see the gap section below.
+deletion mutation race and the native album-import/fault-stage proof. The Windows
+criterion was met later, on 2026-11-24 ([issue-49-windows.md](issue-49-windows.md)).
 
 ## Product change: delete-time verification guard
 
@@ -172,7 +172,11 @@ they contain no API key.
 - Clean non-incremental Release build, 0 errors, pre-existing warnings only.
 - `git diff --check` clean.
 
-## Windows qualification: not executed, not claimed
+## Windows qualification: done 2026-11-24
+
+Superseded: the Windows criterion passed on 2026-11-24 with all 24 stages, recorded in
+[issue-49-windows.md](issue-49-windows.md). The paragraph below is this receipt's original
+2026-11-03 boundary.
 
 Issue #49's Windows criterion remains **unchecked**. No Windows host was available in
 this environment and nothing here qualifies Windows. What a real Windows

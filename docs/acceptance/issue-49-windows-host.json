@@ -1,0 +1,60 @@
+{
+  "_note": "Reduced from the run's results.json: each command stage is its completion message. Runner exit 0.",
+  "runDate": "2026-11-24",
+  "runDirectory": "_temp/issue49-108c63efb1394c108b07e16791e5a131",
+  "commit": "1a2beae9c2cda504e4b6484b2accee7975bb5168",
+  "pluginSha256": "bda075065cb935ff66f5456df1f96ebd4a244f2defc4e68d53e3fad83fe88faf",
+  "archiveSha256": "4bd64517008f319d37d4d4585146a474ac2ff2d0183b1b751661f89f2b434280",
+  "rid": "windows-core-x64",
+  "decoder": {
+    "path": "<user dir>\\us-qual\\ffmpeg\\ffmpeg-9.0.2-essentials_build\\bin\\ffmpeg.exe",
+    "sha256": "3256173f3f8bffd7df12227c68adf68025edb1832273a9530688a7bb1ed8edec",
+    "version": "ffmpeg version 9.0.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+    "archive": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+    "archiveSha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba"
+  },
+  "platform": "Windows-11-10.0.26200-SP0",
+  "stopMethod": "api-shutdown",
+  "forcedStops": 0,
+  "host": {
+    "version": "3.1.3.4968",
+    "osName": "Windows",
+    "osVersion": "10.0.26200.0",
+    "runtimeVersion": "8.0.27"
+  },
+  "importLogObserved": true,
+  "completed": true,
+  "stages": {
+    "metadata-report": "1 artists scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 1 skipped, 0 flagged for review, 1 exact duplicates (report only)",
+    "warm-cache-report": "1 artists scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 1 skipped, 0 flagged for review, 1 exact duplicates (report only)",
+    "changed-source-rejects-cached-evidence": "1 artists scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 1 skipped, 1 flagged for review",
+    "decoder-absent": "1 artists scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 1 skipped, 1 flagged for review",
+    "connect-precedence-report": "1 artists scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 1 skipped, 0 flagged for review, 1 exact duplicates (report only)",
+    "self-source-is-excluded": "1 artists scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 0 skipped, 0 flagged for review, 1 kept for exclusive content",
+    "unmonitored-source-keeps-candidate": "1 artists scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 0 skipped, 0 flagged for review, 1 kept for exclusive content",
+    "exclusive-whole-release-keep": "1 artists scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 0 skipped, 0 flagged for review, 1 kept for exclusive content",
+    "manual-import-report": "Manually imported 1 files",
+    "connect-explicit-cleanup": "1 artists scanned, 1 singles cleaned (unmonitored; deletion not guaranteed), 0 skipped, 0 flagged for review",
+    "manual-import-opt-in": "Manually imported 1 files",
+    "scheduled-opt-in": "1 artists scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 1 skipped, 0 flagged for review",
+    "restart-scan": "1 artists scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 1 skipped, 0 flagged for review",
+    "disabled-entry-skips-scan": "Scan skipped: the Unique Singles metadata entry is disabled",
+    "equivalent-singles-retain-survivor": "1 artists scanned, 1 singles cleaned (unmonitored; deletion not guaranteed), 1 skipped, 0 flagged for review, 1 kept for exclusive content",
+    "album-import-cleanup": "Manually imported 1 files",
+    "mid-analysis-mutation-preserves-release": "1 artist scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 2 skipped, 1 flagged for review",
+    "decode-failure-mid-analysis-preserves-release": "1 artist scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 2 skipped, 1 flagged for review",
+    "decoder-crash-preserves-release": "1 artist scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 2 skipped, 1 flagged for review",
+    "unmonitor-failure-injection-preserves-files": "1 artist scanned, 0 singles cleaned (unmonitored; deletion not guaranteed), 1 skipped, 0 flagged for review, 1 unmonitor failures, 0 delete failures",
+    "unmonitor-failure-recovery-cleans": "1 artist scanned, 1 singles cleaned (unmonitored; deletion not guaranteed), 1 skipped, 0 flagged for review",
+    "delete-failure-injection-files-preserved": "1 artist scanned, 1 singles cleaned (unmonitored; deletion not guaranteed), 2 skipped, 0 flagged for review, 0 unmonitor failures, 1 delete failures",
+    "shutdown-cancellation": {
+      "commandId": 24,
+      "decoderStarted": true,
+      "cancellationTokensObserved": [
+        "cancelled-or-time-budget",
+        "dispatcher-shutdown"
+      ]
+    },
+    "cancellation-recovery-cleans": "1 artist scanned, 1 singles cleaned (unmonitored; deletion not guaranteed), 3 skipped, 0 flagged for review"
+  }
+}
