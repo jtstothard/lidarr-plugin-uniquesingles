@@ -596,7 +596,10 @@ public class SingleCleanupService : ISingleCleanupService
             // The candidate's own secondary types are re-read too: stale or changed metadata
             // that now marks it a distinct version (Live/Remix/DJ-mix/Demo, or unreadable)
             // withdraws the authority granted at decision time.
-            var freshSingle = albums.FirstOrDefault(a => a.Id == single.Id) ?? single;
+            // A candidate that vanished from the repository withdraws authority outright rather
+            // than falling back to the stale object.
+            var freshSingle = albums.FirstOrDefault(a => a.Id == single.Id)
+                ?? throw new InvalidOperationException("candidate-missing");
             if (IsProtectedCandidate(freshSingle) || IsProtectedCandidate(single))
                 throw new InvalidOperationException("candidate-secondary-type-protected");
             var sources = GetComparisonTracksByAlbum(albums, options);

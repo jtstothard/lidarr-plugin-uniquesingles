@@ -1073,8 +1073,19 @@ public partial class SingleCleanupServiceTests
         {
             BeforeArtistLookup?.Invoke();
             ArtistAlbumLookupIds.Add(artistId);
-            return _albums;
+            // A snapshot, like a repository read: later swaps and removals never mutate a list
+            // a caller is already iterating.
+            return _albums.ToList();
         }
+
+        /// <summary>Replaces the stored album with a distinct instance, like a repository re-read.</summary>
+        public void ReplaceAlbum(Album fresh)
+        {
+            var index = _albums.FindIndex(a => a.Id == fresh.Id);
+            _albums[index] = fresh;
+        }
+
+        public void RemoveAlbum(int albumId) => _albums.RemoveAll(a => a.Id == albumId);
 
         public List<Album> GetNextAlbumsByArtistMetadataId(IEnumerable<int> artistMetadataIds) => NotUsed<List<Album>>();
 
