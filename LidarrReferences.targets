@@ -1,7 +1,5 @@
 <Project>
   <PropertyGroup>
-    <!-- Must equal VERSION in scripts/prepare-lidarr.py and SupportedLidarrVersion in AssemblySmokeTests.cs. -->
-    <LidarrAssemblyVersion>3.1.3.4968</LidarrAssemblyVersion>
     <LidarrReferenceDir>$(MSBuildThisFileDirectory)_temp/lidarr/$(LidarrAssemblyVersion)</LidarrReferenceDir>
   </PropertyGroup>
   <ItemGroup>
@@ -19,6 +17,6 @@
     <GetAssemblyIdentity AssemblyFiles="@(LidarrGuardedAssembly)">
       <Output TaskParameter="Assemblies" ItemName="LidarrGuardedIdentity" />
     </GetAssemblyIdentity>
-    <Error Condition="'%(LidarrGuardedIdentity.Version)' != '$(LidarrAssemblyVersion)'" Text="Lidarr assembly version mismatch: %(LidarrGuardedIdentity.Identity) is %(LidarrGuardedIdentity.Version) but this plugin requires $(LidarrAssemblyVersion) (LidarrAssemblyVersion in LidarrReferences.targets). Re-run python3 scripts/prepare-lidarr.py, or update the version in LidarrReferences.targets, scripts/prepare-lidarr.py and AssemblySmokeTests.cs together." />
+    <Error Condition="'%(LidarrGuardedIdentity.Version)' != '$(LidarrAssemblyVersion)'" Text="Lidarr assembly version mismatch: %(LidarrGuardedIdentity.Identity) is %(LidarrGuardedIdentity.Version) but this plugin requires $(LidarrAssemblyVersion) (the LidarrAssemblyVersion property in Directory.Build.props, or -p:LidarrAssemblyVersion). Re-run python3 scripts/prepare-lidarr.py to download the matching references, or change LidarrAssemblyVersion in Directory.Build.props and VERSION in scripts/prepare-lidarr.py together." />
   </Target>
 </Project>

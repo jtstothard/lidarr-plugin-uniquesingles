@@ -1,3 +1,4 @@
+using System.Reflection;
 using NzbDrone.Core.Messaging.Commands;
 using NzbDrone.Core.Plugins;
 using Xunit;
@@ -10,7 +11,11 @@ namespace UniqueSingles.Test;
 /// </summary>
 public class AssemblySmokeTests
 {
-    private static readonly Version SupportedLidarrVersion = new(3, 1, 3, 4968);
+    // LidarrAssemblyVersion from Directory.Build.props, carried as test-assembly metadata
+    // (see UniqueSingles.Test.csproj), so a build against another Lidarr checks that version.
+    private static readonly Version SupportedLidarrVersion = Version.Parse(
+        typeof(AssemblySmokeTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .Single(attribute => attribute.Key == "LidarrAssemblyVersion").Value!);
 
     [Fact]
     public void Assembly_ContainsCommandSubclass()

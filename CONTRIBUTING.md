@@ -44,8 +44,11 @@ compile ImageSharp or run its license-key build target. This does not update
 Lidarr or its runtime dependencies on users' systems.
 
 When changing the supported Lidarr release, update the version/digests in
-`scripts/prepare-lidarr.py`, the path in `LidarrReferences.targets`, and the
-assembly-version guard in `AssemblySmokeTests.cs`. Verify the required plugin
+`scripts/prepare-lidarr.py` and `LidarrAssemblyVersion` in `Directory.Build.props`;
+`LidarrReferences.targets` and the assembly-version guard in `AssemblySmokeTests.cs`
+read that property. `PluginTargetFramework` (default `net8.0`) sets the framework
+and the release ZIP name, because Lidarr installs the asset named for its own .NET
+version. Verify the required plugin
 APIs and the full suite against the actual downloaded binaries. NuGet audit
 checks cover restored packages; they do not inventory the binaries in the
 downloaded Lidarr archive.
