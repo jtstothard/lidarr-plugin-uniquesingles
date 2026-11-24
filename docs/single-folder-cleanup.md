@@ -31,20 +31,22 @@ Only these files are removed. Matching is on the file name, case-insensitive.
 | Kind | Files |
 |------|-------|
 | Album artwork | `cover`, `folder`, `front`, `albumart`, `albumartsmall`, `discart` with `.jpg`, `.jpeg`, `.png` or `.webp` (Lidarr's Kodi metadata writes `folder.*` and `discart.*`) |
-| Release metadata | any `.nfo`, `.lrc`, `.m3u`, `.m3u8` |
+| Release metadata | any `.nfo` or `.lrc` |
 | OS folder metadata | `.DS_Store`, `Thumbs.db`, `desktop.ini` |
 
 Everything else keeps the folder, and nothing in it is touched: audio Lidarr doesn't track
 (`reason=untracked-audio`), and any other file (`reason=unrecognized-files`), such as music
 videos (`.mp4`, `.mkv`), booklets (`.pdf`), other images (`back.jpg`, `scans/`), text files,
-other playlist formats, and hidden files. The keep line is logged at Info with up to ten of the
-file names, so it is clear why a folder stays.
+playlists (`.m3u`, `.m3u8`, `.pls`), and hidden files. The keep line is logged at Info with up to
+ten of the file names, so it is clear why a folder stays.
 
 Deliberately not on the list:
 
 - **`.cue` and `.log`.** Cue sheets and rip logs are rip provenance that some people keep on
   purpose, and a cue sheet can be the only track map of an image rip. With no recycle bin set
   (Lidarr's default) a removal is permanent, so these keep the folder.
+- **Playlists (`.m3u`, `.m3u8`, `.pls`).** They are usually made by the user, not written by
+  Lidarr, so a playlist in the folder keeps it like any other user file.
 - **AppleDouble `._*` files.** They belong to whatever file they shadow; the plugin cannot tell
   whether that file was a sidecar.
 
@@ -80,8 +82,11 @@ Lidarr's multi-disc track format puts each disc in its own folder (`Release/CD 0
 `Release/CD 02/`), with album artwork in `Release/`. The folders cleaned are:
 
 - every folder that directly held one of the single's deleted audio files, and
-- when there are two or more such folders that are siblings, their shared parent (the release
-  folder).
+- their shared parent (the release folder), only when there are two or more such folders, every
+  one of them is a direct child of that parent, **and** the single's tracks span more than one
+  disc (`MediumNumber`, from `ITrackService.GetTracksByAlbum`). Two sibling folders of a
+  single-disc single, such as `Artist/Singles/` holding two release folders, do not show that the
+  parent is a release folder, so it is left alone.
 
 They are processed deepest first, ties in ordinal path order, so the disc folders are gone before
 the release folder is checked. Outcomes:
@@ -92,7 +97,10 @@ the release folder is checked. Outcomes:
   cleaned.
 - Audio in both `Release/` and `Release/CD 02/`: `CD 02` first, then `Release`.
 - A release folder above a single disc folder (only one audio folder) is not climbed into: only
-  the disc folder is cleaned. No folder above the release folder is ever considered.
+  the disc folder is cleaned.
+- No folder above an audio folder is ever considered except that shared parent of a multi-disc
+  release. Sibling audio folders of a single-disc single, or folders that do not share one parent,
+  are cleaned on their own and their parent is untouched.
 
 ## Sweep for folders stranded before the fix
 
