@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -79,21 +79,40 @@ jobs:
         run: |
           dotnet test tests/UniqueSingles.Test/UniqueSingles.Test.csproj -c Release --no-build --verbosity normal
 
-      - name: Zip Plugin
+      - name: Upload plugin package
+        uses: actions/upload-artifact@v4
         if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
-        run: |
-          cp _temp/bin/Release/UniqueSingles/${{ env.PLUGIN_NAME }}.net8.0.zip /tmp/
+        with:
+          name: plugin-package
+          path: _temp/bin/Release/UniqueSingles/${{ env.PLUGIN_NAME }}.net8.0.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  # The only job that gets a write-capable token; PR runs never reach it. It runs on
+  # main even when the Windows leg failed (!cancelled), matching the earlier behaviour
+  # where only the Linux leg gated the release, and fails if Linux produced no package.
+  release:
+    needs: build
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download plugin package
+        uses: actions/download-artifact@v4
+        with:
+          name: plugin-package
+          path: release
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v3
-        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
         with:
           tag_name: ${{ env.PLUGIN_VERSION }}
           name: ${{ env.PLUGIN_VERSION }}
           # Publish a real release on main so Lidarr's update check can offer and
           # install it (the draft: true regression behind #25). PR builds never
-          # reach this step. run_number is monotonic, so the newest main build
+          # reach this job. run_number is monotonic, so the newest main build
           # is always the one GitHub marks as Latest.
           draft: false
           make_latest: true
-          files: /tmp/${{ env.PLUGIN_NAME }}.net8.0.zip
+          files: release/${{ env.PLUGIN_NAME }}.net8.0.zip
