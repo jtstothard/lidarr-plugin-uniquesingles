@@ -86,21 +86,59 @@ jobs:
         run: |
           dotnet test tests/UniqueSingles.Test/UniqueSingles.Test.csproj -c Release --no-build --verbosity normal
 
+      # Uploaded on every Linux run: host-smoke needs it on PRs too.
       - name: Upload plugin package
         uses: actions/upload-artifact@v7
-        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
+        if: runner.os == 'Linux'
         with:
           name: plugin-package
           path: _temp/bin/Release/UniqueSingles/${{ env.PLUGIN_NAME }}.net8.0.zip
           if-no-files-found: error
           retention-days: 1
 
+  # Load the packaged plugin into a real, throwaway Lidarr container (empty config, no
+  # network, no media) and check it registers, resolves its dependencies, creates its
+  # Connect/Metadata entries and runs a scan. Unit tests compile against Lidarr
+  # 3.1.3.4968 reference assemblies; this covers the hosts users actually run:
+  # `latest` (stable) and `nightly` (what the production instance tracks).
+  host-smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: [latest, nightly]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download plugin package
+        uses: actions/download-artifact@v8
+        with:
+          name: plugin-package
+          path: package
+
+      - name: Pull Lidarr image
+        env:
+          IMAGE: lscr.io/linuxserver/lidarr:${{ matrix.tag }}
+        run: |
+          for _ in 1 2 3; do docker pull --quiet "$IMAGE" && break; sleep 15; done
+          docker image inspect "$IMAGE" --format '{{index .Config.Labels "org.opencontainers.image.version"}} {{.Id}}'
+
+      - name: Smoke-test the plugin in Lidarr
+        run: |
+          python3 scripts/smoke-lidarr-container.py \
+            "package/${PLUGIN_NAME}.net8.0.zip" \
+            "lscr.io/linuxserver/lidarr:${{ matrix.tag }}" \
+            "${PLUGIN_VERSION}"
+
   # The only job that gets a write-capable token; PR runs never reach it. It runs on
   # main even when the Windows leg failed (!cancelled), matching the earlier behaviour
-  # where only the Linux leg gated the release, and fails if Linux produced no package.
+  # where only the Linux leg gated the release, but a build that fails host-smoke on
+  # either image is never published.
   release:
-    needs: build
-    if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+    needs: [build, host-smoke]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && needs.host-smoke.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

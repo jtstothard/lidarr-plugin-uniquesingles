@@ -80,6 +80,21 @@ Release/Python gates, run `python3 scripts/qualify-disposable-host.py` with Pyth
 3.12+ for the fresh-database, synthetic-library native command/import qualification.
 See [operations](docs/exact-flac-analysis.md) and [acceptance evidence](docs/acceptance/issue-42.md).
 
+## Real-host smoke test
+
+Unit tests compile against the pinned Lidarr 3.1.3.4968 reference assemblies, which
+cannot show whether a real Lidarr host loads the plugin and resolves its dependency
+graph. CI's `host-smoke` job therefore loads the packaged plugin into throwaway
+LinuxServer Lidarr containers (`latest` and `nightly`) with an empty `/config`, no
+network and no media. It checks that the plugin is listed at the built version,
+creates its Connect and Metadata entries, runs a scan, and fails on any plugin-related
+warning or error (DryIoc resolution failures included) or a fatal host log line.
+Main builds are only released when both images pass. To run it locally (needs docker):
+
+```bash
+python3 scripts/smoke-lidarr-container.py _temp/bin/Release/UniqueSingles/Lidarr.Plugin.UniqueSingles.net8.0.zip lscr.io/linuxserver/lidarr:nightly
+```
+
 CI explicitly installs a FFmpeg package (Ubuntu's on Linux, Chocolatey's on
 Windows) before running the audio tests and records its package/build version in
 the job log. This is a test dependency; the plugin archive does not bundle a
