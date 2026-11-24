@@ -242,6 +242,22 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
             return false;
         }
 
+        if (SingleCleanupService.IsProtectedCandidate(single))
+        {
+            // Mirror of the source-side exclusion: a Live/Remix/DJ-mix/Demo single (or one whose
+            // secondary types are unreadable) is a distinct version, never a duplicate, so it
+            // is never unmonitored on any evidence tier.
+            _logger.Info(
+                "UniqueSingles eager keep: single carries a secondary type that marks a distinct version, or its secondary types are unknown. artistId={0} artist='{1}' singleId={2} single='{3}' secondaryTypes='{4}' reason={5}",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title,
+                SingleCleanupService.DescribeSecondaryTypes(single),
+                single.SecondaryTypes == null ? "candidate-secondary-types-unknown" : "candidate-excluded-secondary-type");
+            return false;
+        }
+
         List<Track> singleTracks;
         try
         {
@@ -285,8 +301,8 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
             return false;
         }
 
-        var comparisonTracks = GetDownloadedComparisonTracks(artist, single, options);
-        var check = TrackMatcher.CheckSingle(singleTracks, comparisonTracks, options.DurationToleranceMs);
+        var (comparisonTracks, tier1OnlyTracks) = GetDownloadedComparisonTracks(artist, single, options);
+        var check = TrackMatcher.CheckSingle(singleTracks, comparisonTracks, tier1OnlyTracks, options.DurationToleranceMs);
 
         if (!check.IsRedundant)
         {
@@ -439,11 +455,12 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
     /// <summary>
     /// Mirrors SingleCleanupService.GetComparisonTracksByAlbum selection exactly: monitored
     /// releases of the configured comparison types (Album/EP by default), excluding Live,
-    /// Remix, DJ-mix and Demo secondary types, contributing only downloaded tracks, and never
+    /// Remix, DJ-mix, Demo and unknown secondary types, routing releases with any other
+    /// secondary type into the Tier-1-only pool, contributing only downloaded tracks, and never
     /// the candidate itself (possible when "Single" is a configured comparison type — a
     /// file-less single contributes no downloaded tracks either way).
     /// </summary>
-    private List<Track> GetDownloadedComparisonTracks(Artist artist, Album single, SingleCleanupOptions options)
+    private (List<Track> Standard, List<Track> Tier1Only) GetDownloadedComparisonTracks(Artist artist, Album single, SingleCleanupOptions options)
     {
         List<Album> albums;
         try
@@ -457,10 +474,11 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
                 "UniqueSingles eager lookup failure: failed to load artist albums. artistId={0} artist='{1}' reason=album-lookup-failed",
                 artist.Id,
                 artist.Name);
-            return new List<Track>();
+            return (new List<Track>(), new List<Track>());
         }
 
         var comparisonTracks = new List<Track>();
+        var tier1OnlyTracks = new List<Track>();
         foreach (var album in albums)
         {
             if (album == null || album.Id == single.Id)
@@ -473,20 +491,24 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
                 continue;
             }
 
-            if (SingleCleanupService.HasExcludedSecondaryType(album))
+            var secondaryClass = SingleCleanupService.ClassifySecondaryTypes(album);
+            if (secondaryClass == SingleCleanupService.SecondaryTypeClass.Excluded
+                || secondaryClass == SingleCleanupService.SecondaryTypeClass.Unknown)
             {
                 _logger.Debug(
-                    "UniqueSingles eager comparison skip: album has an excluded secondary type. albumId={0} album='{1}' secondaryTypes='{2}' reason=excluded-secondary-type",
+                    "UniqueSingles eager comparison skip: album is not a reliable comparison source. albumId={0} album='{1}' secondaryTypes='{2}' reason={3}",
                     album.Id,
                     album.Title,
-                    string.Join(",", album.SecondaryTypes.Select(t => t.Name)));
+                    SingleCleanupService.DescribeSecondaryTypes(album),
+                    secondaryClass == SingleCleanupService.SecondaryTypeClass.Excluded ? "excluded-secondary-type" : "secondary-types-unknown");
                 continue;
             }
 
             try
             {
                 var albumTracks = _trackService.GetTracksByAlbum(album.Id) ?? new List<Track>();
-                comparisonTracks.AddRange(albumTracks.Where(t => t.HasFile));
+                (secondaryClass == SingleCleanupService.SecondaryTypeClass.Tier1Only ? tier1OnlyTracks : comparisonTracks)
+                    .AddRange(albumTracks.Where(t => t.HasFile));
             }
             catch (Exception ex)
             {
@@ -499,7 +521,7 @@ public class EagerSingleUnmonitorService : IEagerSingleUnmonitorService,
             }
         }
 
-        return comparisonTracks;
+        return (comparisonTracks, tier1OnlyTracks);
     }
 
     /// <summary>
