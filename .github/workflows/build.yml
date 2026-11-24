@@ -149,6 +149,18 @@ jobs:
           name: plugin-package
           path: release
 
+      # Lidarr picks the release asset whose name contains net{runtime major}.0.zip, so
+      # Lidarr 4.x (.NET 10) found nothing to install or update to (#62). The net8.0
+      # package runs unchanged on Lidarr 4: host-smoke's nightly leg loads it there and
+      # this job only runs when that leg passed. Publish the same bytes under the
+      # net10.0 name until a native net10.0 build exists (needs a Lidarr 4.x release to
+      # pin, see prepare-lidarr.py); then replace this copy with that build.
+      - name: Add the net10.0 asset name for Lidarr 4.x
+        run: |
+          set -euo pipefail
+          cp "release/${PLUGIN_NAME}.net8.0.zip" "release/${PLUGIN_NAME}.net10.0.zip"
+          sha256sum release/*.zip
+
       # Concurrency orders runs that start together, but a re-run of an older main run
       # still publishes after newer releases exist. Only claim "Latest" when this build
       # is at least as new as the current Latest release (#75).
@@ -185,4 +197,6 @@ jobs:
           # current Latest (see the step above), never to a re-run of an old one.
           draft: false
           make_latest: ${{ steps.latest.outputs.make_latest }}
-          files: release/${{ env.PLUGIN_NAME }}.net8.0.zip
+          files: |
+            release/${{ env.PLUGIN_NAME }}.net8.0.zip
+            release/${{ env.PLUGIN_NAME }}.net10.0.zip
