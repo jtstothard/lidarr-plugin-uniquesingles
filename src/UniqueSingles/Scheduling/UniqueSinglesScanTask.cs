@@ -158,6 +158,33 @@ namespace NzbDrone.Core.Plugins
                 Tier3Action.FlagOnly);
         }
 
+        /// <summary>
+        /// Whether the plugin's Metadata entry (Settings > Metadata) is currently enabled.
+        /// Resolved like <see cref="ResolveCleanupOptions"/>: the persisted definition first,
+        /// because CommandExecutor hands an unbound handler a default (disabled) definition,
+        /// then the bound Definition. Fails closed: any lookup failure, or no definition at all,
+        /// counts as disabled, because this gates library-wide unmonitoring and file deletion.
+        /// </summary>
+        private bool IsMetadataEntryEnabled()
+        {
+            try
+            {
+                var persisted = _metadataFactory.Value.All()
+                    .Where(d => d.Implementation == nameof(UniqueSinglesScanTask))
+                    .ToList();
+                if (persisted.Count > 0)
+                {
+                    return persisted.Any(d => d.Enable);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn(ex, "UniqueSingles scan: failed to read the persisted metadata entry, falling back to the bound definition");
+            }
+
+            return Definition?.Enable ?? false;
+        }
+
         public override string Name => "UniqueSingles Scan";
 
         public override Type CommandType => typeof(UniqueSinglesScanCommand);
@@ -181,6 +208,18 @@ namespace NzbDrone.Core.Plugins
             if (command == null)
             {
                 throw new ArgumentNullException(nameof(command));
+            }
+
+            // Disabling the Metadata entry removes the scheduled task but never touches Lidarr's
+            // command queue, so a command queued, in flight, or sent via the API can still arrive
+            // here. Re-check before any destructive work (covers every trigger path).
+            if (!IsMetadataEntryEnabled())
+            {
+                _logger.Warn(
+                    "UniqueSingles scan skipped: the Unique Singles metadata entry is disabled (Settings > Metadata). No singles were unmonitored and no files were deleted. artistId={0}",
+                    command.ArtistId);
+                command.ResultMessage = "Scan skipped: the Unique Singles metadata entry is disabled";
+                return;
             }
 
             // Per-artist scan: if ArtistId is provided, scan only that artist
