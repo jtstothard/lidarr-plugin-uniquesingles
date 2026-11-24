@@ -468,6 +468,8 @@ public class SingleFolderCleanupTests : IDisposable
         container.RegisterInstance(Stub<IHistoryRepository>());
         container.RegisterInstance(Stub<IDiskProvider>());
         container.RegisterInstance(Stub<IRecycleBinProvider>());
+        container.RegisterInstance(Stub<NzbDrone.Core.Download.TrackedDownloads.ITrackedDownloadService>());
+        container.RegisterInstance(Stub<NzbDrone.Core.History.IHistoryService>());
         container.RegisterInstance(LogManager.CreateNullLogger());
 
         Assert.IsType<SingleFolderCleanup>(container.Resolve<ISingleFolderCleanup>());

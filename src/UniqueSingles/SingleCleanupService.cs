@@ -46,6 +46,7 @@ public class SingleCleanupService : ISingleCleanupService
     private readonly IMediaFileService _mediaFileService;
     private readonly IDeleteMediaFiles _deleteMediaFiles;
     private readonly ICleanupHistoryRecorder _historyRecorder;
+    private readonly IInFlightReleaseProbe _inFlightProbe;
     private readonly ISingleFolderCleanup _folderCleanup;
     private readonly Logger _logger;
 
@@ -55,6 +56,7 @@ public class SingleCleanupService : ISingleCleanupService
         IMediaFileService mediaFileService,
         IDeleteMediaFiles deleteMediaFiles,
         ICleanupHistoryRecorder historyRecorder,
+        IInFlightReleaseProbe inFlightProbe,
         ISingleFolderCleanup folderCleanup,
         Logger logger)
     {
@@ -63,6 +65,7 @@ public class SingleCleanupService : ISingleCleanupService
         _mediaFileService = mediaFileService ?? throw new ArgumentNullException(nameof(mediaFileService));
         _deleteMediaFiles = deleteMediaFiles ?? throw new ArgumentNullException(nameof(deleteMediaFiles));
         _historyRecorder = historyRecorder ?? throw new ArgumentNullException(nameof(historyRecorder));
+        _inFlightProbe = inFlightProbe ?? throw new ArgumentNullException(nameof(inFlightProbe));
         _folderCleanup = folderCleanup ?? throw new ArgumentNullException(nameof(folderCleanup));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -302,15 +305,26 @@ public class SingleCleanupService : ISingleCleanupService
         var unmonitorFailures = 0;
         var deleteFailures = 0;
 
+        // Leak backstop: a release the plugin unmonitored as redundant can still receive files,
+        // from a download that raced the unmonitor or from an automatic search Lidarr ran after
+        // it. Those files are evaluated under the normal cleanup rules instead of being skipped.
+        // Files from a user-initiated grab after the unmonitor, or from an import without a grab,
+        // are kept, as are releases unmonitored by the user or by Lidarr (no plugin History row).
+        var pluginUnmonitored = false;
         if (!single.Monitored)
         {
-            _logger.Info(
-                "UniqueSingles cleanup skip: single already unmonitored. artistId={0} artist='{1}' singleId={2} single='{3}' reason=already-unmonitored",
-                artist.Id,
-                artist.Name,
-                single.Id,
-                single.Title);
-            return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
+            if (_historyRecorder.GetProvenance(single.Id) != UnmonitorProvenance.PluginUnmonitored)
+            {
+                _logger.Info(
+                    "UniqueSingles cleanup skip: single already unmonitored. artistId={0} artist='{1}' singleId={2} single='{3}' reason=already-unmonitored",
+                    artist.Id,
+                    artist.Name,
+                    single.Id,
+                    single.Title);
+                return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
+            }
+
+            pluginUnmonitored = true;
         }
 
         List<Track> singleTracks;
@@ -331,6 +345,42 @@ public class SingleCleanupService : ISingleCleanupService
         }
 
         var downloadedSingleTracks = singleTracks.Where(t => t.HasFile).ToList();
+        if (pluginUnmonitored)
+        {
+            if (downloadedSingleTracks.Count == 0)
+            {
+                _logger.Info(
+                    "UniqueSingles cleanup skip: single already unmonitored. artistId={0} artist='{1}' singleId={2} single='{3}' reason=already-unmonitored",
+                    artist.Id,
+                    artist.Name,
+                    single.Id,
+                    single.Title);
+                return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
+            }
+
+            if (!LeakBackstopApplies(artist, single, out var backstopDetail))
+            {
+                _logger.Info(
+                    "UniqueSingles leak backstop keep: files in a release the plugin unmonitored did not all come from an automatic grab or a grab that predated the unmonitor; the user fetched them after it, or their origin is unknown. artistId={0} artist='{1}' singleId={2} single='{3}' downloadedTracks={4} detail='{5}' reason=leak-backstop-not-race",
+                    artist.Id,
+                    artist.Name,
+                    single.Id,
+                    single.Title,
+                    downloadedSingleTracks.Count,
+                    backstopDetail);
+                return new CleanupResult(candidatesChecked, cleaned, 1, reviewNeeded, unmonitorFailures, deleteFailures);
+            }
+
+            _logger.Info(
+                "UniqueSingles leak backstop: release the plugin unmonitored as redundant received files from an automatic grab or a download that raced the unmonitor; evaluating under normal cleanup rules. artistId={0} artist='{1}' singleId={2} single='{3}' downloadedTracks={4} detail='{5}' reason=plugin-unmonitored-has-files",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title,
+                downloadedSingleTracks.Count,
+                backstopDetail);
+        }
+
         if (downloadedSingleTracks.Count == 0)
         {
             // Check if single is fully Tier-1 redundant (exact MBID matches) before skipping
@@ -345,10 +395,16 @@ public class SingleCleanupService : ISingleCleanupService
                     single.Id,
                     single.Title);
 
+                if (!MayUnmonitorFilelessSingle(artist, single))
+                {
+                    return new CleanupResult(candidatesChecked, cleaned, 1, 0, 0, 0);
+                }
+
                 // Unmonitor but don't delete (no files to delete)
                 if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext,
                     new SingleRedundancyCheck(true, new List<MatchResult>(),
-                    "Fully Tier-1 redundant by MBID matching (no files present).")))
+                    "Fully Tier-1 redundant by MBID matching (no files present)."),
+                    fileless: true))
                 {
                     unmonitorFailures = 1;
                     return new CleanupResult(candidatesChecked, cleaned, 0, 0, unmonitorFailures, 0);
@@ -378,7 +434,12 @@ public class SingleCleanupService : ISingleCleanupService
                         single.Id,
                         single.Title);
 
-                    if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext, filelessCheck))
+                    if (!MayUnmonitorFilelessSingle(artist, single))
+                    {
+                        return new CleanupResult(candidatesChecked, cleaned, 1, 0, 0, 0);
+                    }
+
+                    if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext, filelessCheck, fileless: true))
                     {
                         unmonitorFailures = 1;
                         return new CleanupResult(candidatesChecked, cleaned, 0, 0, unmonitorFailures, 0);
@@ -471,10 +532,23 @@ public class SingleCleanupService : ISingleCleanupService
             }
         }
 
+        if (!pluginUnmonitored && IsUserRemonitored(artist, single))
+        {
+            return new CleanupResult(candidatesChecked, cleaned, 1, 0, 0, 0);
+        }
+
         if (cleanupReport != null && !RevalidateExactCleanup(artist, single, cleanupReport, options, null, null, out _))
             return new CleanupResult(1, 0, 1, 0, 0, 0);
 
-        if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext, check))
+        // Backstop provenance was read before matching and exact-audio analysis, which can take
+        // minutes; a user re-monitor or a user fetch in between must stop the deletion.
+        if (pluginUnmonitored && !LeakBackstopStillApplies(artist, single))
+        {
+            return new CleanupResult(candidatesChecked, cleaned, 1, 0, 0, 0);
+        }
+
+        // A plugin-unmonitored release is already unmonitored and already has its audit row.
+        if (!pluginUnmonitored && !TryUnmonitorSingle(artist, single, comparisonAlbumContext, check, fileless: false))
         {
             unmonitorFailures = 1;
             return new CleanupResult(candidatesChecked, cleaned, 0, 0, unmonitorFailures, 0);
@@ -626,10 +700,16 @@ public class SingleCleanupService : ISingleCleanupService
                     comparisonAlbumContext?.Id,
                     comparisonAlbumContext?.Title);
 
+                if (!MayUnmonitorFilelessSingle(artist, single))
+                {
+                    return;
+                }
+
                 // Unmonitor but don't delete (no files to delete)
                 TryUnmonitorSingle(artist, single, comparisonAlbumContext,
                     new SingleRedundancyCheck(true, new List<MatchResult>(),
-                    "Fully Tier-1 redundant by MBID matching (no files present)."));
+                    "Fully Tier-1 redundant by MBID matching (no files present)."),
+                    fileless: true);
                 return;
             }
 
@@ -649,12 +729,12 @@ public class SingleCleanupService : ISingleCleanupService
         var check = TrackMatcher.CheckSingle(singleTracks, albumTracks);
         LogMatchDecision(artist, single, comparisonAlbumContext, check);
 
-        if (!check.IsRedundant)
+        if (!check.IsRedundant || IsUserRemonitored(artist, single))
         {
             return;
         }
 
-        if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext, check))
+        if (!TryUnmonitorSingle(artist, single, comparisonAlbumContext, check, fileless: false))
         {
             return;
         }
@@ -871,8 +951,184 @@ public class SingleCleanupService : ISingleCleanupService
         }
     }
 
-    private bool TryUnmonitorSingle(Artist artist, Album single, Album? comparisonAlbumContext, SingleRedundancyCheck check)
+    /// <summary>
+    /// Gate for every file-less unmonitor (Tier-1 and Tier-2, scan and import). A single with a
+    /// grabbed, downloading, or awaiting-import release is file-less only until that download
+    /// imports; unmonitoring it now would land the files in an unmonitored release. It stays
+    /// monitored, so the import-time self-check cleans the files as a normal monitored single.
+    /// </summary>
+    private bool MayUnmonitorFilelessSingle(Artist artist, Album single)
     {
+        if (IsUserRemonitored(artist, single))
+        {
+            return false;
+        }
+
+        if (_inFlightProbe.IsInFlight(single, out var detail))
+        {
+            _logger.Info(
+                "UniqueSingles unmonitor deferred: single has a download Lidarr can still import; it stays monitored so the import-time cleanup handles the files. artistId={0} artist='{1}' singleId={2} single='{3}' download='{4}' reason=download-in-flight",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title,
+                detail);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// True when the user took the release back after the plugin unmonitored it: a UserRemonitor
+    /// row, unreadable provenance, or a release that is monitored now although the plugin's latest
+    /// row is still an Unmonitor (its UserRemonitor row is missing; see
+    /// <see cref="UnmonitorProvenanceExtensions.ProtectsRelease"/>). Such a release is not
+    /// unmonitored or deleted by the plugin.
+    /// </summary>
+    private bool IsUserRemonitored(Artist artist, Album single)
+    {
+        var provenance = _historyRecorder.GetProvenance(single.Id);
+        if (!provenance.ProtectsRelease(single.Monitored))
+        {
+            return false;
+        }
+
+        _logger.Info(
+            "UniqueSingles cleanup skip: user re-monitored this release after the plugin unmonitored it. artistId={0} artist='{1}' singleId={2} single='{3}' provenance={4} monitored={5} reason=user-remonitored",
+            artist.Id,
+            artist.Name,
+            single.Id,
+            single.Title,
+            provenance,
+            single.Monitored);
+        return true;
+    }
+
+    /// <summary>
+    /// Leak-backstop gate: the files now in a plugin-unmonitored release must all have come from
+    /// an automatic grab (whenever it ran) or a user grab that predates the plugin's Unmonitor
+    /// row. Files from a user grab after the unmonitor, an import without a grab, or whose origin
+    /// cannot be established are kept.
+    /// </summary>
+    private bool LeakBackstopApplies(Artist artist, Album single, out string detail)
+    {
+        List<TrackFile> files;
+        try
+        {
+            files = _mediaFileService.GetFilesByAlbum(single.Id) ?? new List<TrackFile>();
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn(
+                ex,
+                "UniqueSingles leak backstop keep: failed to load media files. artistId={0} artist='{1}' singleId={2} single='{3}' reason=media-file-lookup-failed",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title);
+            detail = "media-file-lookup-failed";
+            return false;
+        }
+
+        return _historyRecorder.FilesCameFromCleanableGrab(single.Id, files.Select(f => f.Id).ToList(), out detail);
+    }
+
+    /// <summary>
+    /// Re-reads everything the backstop decision rests on immediately before deletion: the
+    /// plugin's provenance row (a user re-monitor writes UserRemonitor), the stored monitored
+    /// flag (a re-monitor whose row could not be written), and the files' grab provenance (a
+    /// user fetch may have replaced them).
+    /// </summary>
+    private bool LeakBackstopStillApplies(Artist artist, Album single)
+    {
+        string detail;
+        var provenance = _historyRecorder.GetProvenance(single.Id);
+        if (provenance != UnmonitorProvenance.PluginUnmonitored)
+        {
+            detail = $"provenance={provenance}";
+        }
+        else
+        {
+            bool monitoredNow;
+            try
+            {
+                monitoredNow = _albumService.GetAlbum(single.Id)?.Monitored ?? true;
+            }
+            catch (Exception ex)
+            {
+                _logger.Warn(
+                    ex,
+                    "UniqueSingles leak backstop delete aborted: failed to re-read the release. artistId={0} artist='{1}' singleId={2} single='{3}' reason=backstop-recheck-failed",
+                    artist.Id,
+                    artist.Name,
+                    single.Id,
+                    single.Title);
+                return false;
+            }
+
+            if (monitoredNow)
+            {
+                detail = "release-monitored-again";
+            }
+            else if (LeakBackstopApplies(artist, single, out var grabDetail))
+            {
+                return true;
+            }
+            else
+            {
+                detail = grabDetail;
+            }
+        }
+
+        _logger.Info(
+            "UniqueSingles leak backstop delete aborted: release state changed during evaluation. artistId={0} artist='{1}' singleId={2} single='{3}' detail='{4}' reason=backstop-state-changed",
+            artist.Id,
+            artist.Name,
+            single.Id,
+            single.Title,
+            detail);
+        return false;
+    }
+
+    /// <summary>
+    /// Unmonitors a redundant single. The History row is written first: for a file-less single
+    /// it is load-bearing, because it is what lets the leak backstop clean a download that lands
+    /// after the unmonitor. A file-less single whose row cannot be written therefore stays
+    /// monitored (the next scan retries). With files, the row is audit only (the files are
+    /// deleted in the same pass), so a failed write is logged and the cleanup proceeds. If the
+    /// unmonitor itself fails after the row was written, an UnmonitorReverted row supersedes it.
+    /// </summary>
+    private bool TryUnmonitorSingle(Artist artist, Album single, Album? comparisonAlbumContext, SingleRedundancyCheck check, bool fileless)
+    {
+        bool recorded;
+        try
+        {
+            recorded = _historyRecorder.RecordUnmonitor(artist, single, check.SummaryReason);
+        }
+        catch (Exception historyEx)
+        {
+            _logger.Warn(
+                historyEx,
+                "UniqueSingles history: action=unmonitor-record-failed artistId={0} albumId={1} reason=history-recorder-threw",
+                artist.Id,
+                single.Id);
+            recorded = false;
+        }
+
+        if (!recorded && fileless)
+        {
+            _logger.Warn(
+                "UniqueSingles unmonitor deferred: the History row could not be written, and without it a download landing later could not be cleaned; single stays monitored. artistId={0} artist='{1}' singleId={2} single='{3}' comparisonAlbumId={4} comparisonAlbum='{5}' reason=unmonitor-history-write-failed",
+                artist.Id,
+                artist.Name,
+                single.Id,
+                single.Title,
+                comparisonAlbumContext?.Id,
+                comparisonAlbumContext?.Title);
+            return false;
+        }
+
         try
         {
             _albumService.SetAlbumMonitored(single.Id, false);
@@ -886,20 +1142,6 @@ public class SingleCleanupService : ISingleCleanupService
                 comparisonAlbumContext?.Id,
                 comparisonAlbumContext?.Title,
                 check.SummaryReason);
-            // Lidarr History audit row; recorder failures never affect the cleanup decision.
-            try
-            {
-                _historyRecorder.RecordUnmonitor(artist, single, check.SummaryReason);
-            }
-            catch (Exception historyEx)
-            {
-                _logger.Warn(
-                    historyEx,
-                    "UniqueSingles history: action=unmonitor-record-failed artistId={0} albumId={1} reason=history-recorder-threw",
-                    artist.Id,
-                    single.Id);
-            }
-
             return true;
         }
         catch (Exception ex)
@@ -913,7 +1155,28 @@ public class SingleCleanupService : ISingleCleanupService
                 single.Title,
                 comparisonAlbumContext?.Id,
                 comparisonAlbumContext?.Title);
+            if (recorded)
+            {
+                RevertUnmonitorRow(artist, single);
+            }
+
             return false;
+        }
+    }
+
+    private void RevertUnmonitorRow(Artist artist, Album single)
+    {
+        try
+        {
+            _historyRecorder.RecordUnmonitorReverted(artist, single);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn(
+                ex,
+                "UniqueSingles history: action=unmonitor-reverted-record-failed artistId={0} albumId={1} reason=history-recorder-threw",
+                artist.Id,
+                single.Id);
         }
     }
 
